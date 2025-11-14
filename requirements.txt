@@ -1,0 +1,22 @@
+# --- Núcleo (Usado por AMBOS os scripts) ---
+# Necessário para todas as chamadas de API (Azure AI Search, AOAI, OpenAI)
+requests>=2.32.0
+
+# Usado pelo script de ingestão para carregar o .env
+# Também é útil para testes locais do function_app.py (embora o Azure use local.settings.json)
+python-dotenv>=1.0.1
+
+# --- Script de Ingestão (ingest_embeddings_azure_search_atribuicao.py) ---
+# Necessário para baixar o arquivo JSONL do Blob Storage 
+azure-storage-blob>=12.21.0
+azure-functions=1.24.0
+
+# Dependência do azure-storage-blob, já listada no seu arquivo 
+azure-core>=1.30.2
+
+# --- Pré-processamento (Para criar os JSONL) ---
+# Estas bibliotecas não são usadas pelo 'function_app.py' ou 'ingest_...py',
+# mas estavam no seu requirements.txt. Elas são usadas pelo
+# script que LÊ os PDFs e DOCs para CRIAR o JSONL.
+PyPDF2>=3.0.1
+python-docx>=0.8.11
