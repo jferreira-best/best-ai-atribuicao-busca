@@ -39,7 +39,15 @@ def _text_search(query, top_k, semantic_config=None):
     # Usa a config do payload ou o default do settings
     config_to_use = semantic_config or settings.SEMANTIC_CONFIG
     
-    payload = {"search": query, "top": top_k}
+    #payload = {"search": query, "top": top_k}
+
+    payload = {
+        "search": query,
+        "top": top_k,
+        "select": "content, title, source_file, norma_tipo" # Traga SÓ o necessário
+    }
+
+
     
     if settings.ENABLE_SEMANTIC and config_to_use:
         payload.update({

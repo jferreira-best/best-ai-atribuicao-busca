@@ -29,4 +29,4 @@ AOAI_API_VERSION = _safe_str("AOAI_API_VERSION", "2023-05-15")
 EMBED_DIM = _safe_int("EMBED_DIM", 3072) # text-embedding-3-large geralmente
 HTTP_TIMEOUT_SHORT = _safe_int("HTTP_TIMEOUT_SHORT", 8)
 HTTP_TIMEOUT_LONG = _safe_int("HTTP_TIMEOUT_LONG", 30)
-DEFAULT_TOPK = _safe_int("DEFAULT_TOPK", 4) #reduzi era 5
+DEFAULT_TOPK = _safe_int("DEFAULT_TOPK", 3) #reduzi era 5, de 4 para 3

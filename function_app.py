@@ -5,7 +5,7 @@ from src.orchestrator import router
 
 app = func.FunctionApp()
 
-@app.route(route="search", auth_level=func.AuthLevel.ANONYMOUS, methods=['POST'])
+@app.route(route="search_atribuicao", auth_level=func.AuthLevel.ANONYMOUS, methods=['POST'])
 def http_search_trigger(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Recebendo requisição no Orquestrador de Agentes Docente.')
 

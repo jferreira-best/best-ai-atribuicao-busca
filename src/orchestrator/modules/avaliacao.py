@@ -31,7 +31,7 @@ def run_chain(query: str, context_data: dict):
     
     return {
         "resposta": text,
-        "modulo": "Classificação",
+        "modulo": "avaliacao",
         "fontes": deduplicate_list([d['meta'] for d in docs]), # <--- AQUI: Envolva a lista com a função
         "debug_intent": intent
     }
