@@ -9,7 +9,9 @@ python-dotenv>=1.0.1
 # --- Script de Ingestão (ingest_embeddings_azure_search_atribuicao.py) ---
 # Necessário para baixar o arquivo JSONL do Blob Storage 
 azure-storage-blob>=12.21.0
-azure-functions=1.24.0
+
+# CORRIGIDO: alterado de '=' para '=='
+azure-functions==1.24.0
 
 # Dependência do azure-storage-blob, já listada no seu arquivo 
 azure-core>=1.30.2
