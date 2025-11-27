@@ -16,10 +16,19 @@ def http_search_trigger(req: func.HttpRequest) -> func.HttpResponse:
         query = body.get("query")
         
         if not query:
-            return func.HttpResponse("Por favor, envie um JSON com {'query': 'sua pergunta'}", status_code=400)
+            return func.HttpResponse("JSON inválido", status_code=400)
 
-        # Chama o Router (O Maestro)
-        result = router.route_request(query, body)
+        # --- CAPTURA DE IP (HACK PARA DEV) ---
+        # Tenta pegar o IP real (se estiver na nuvem) ou local
+        client_ip = req.headers.get("x-forwarded-for")
+        if not client_ip:
+            client_ip = "127.0.0.1" # Fallback local
+        else:
+            client_ip = client_ip.split(',')[0].split(':')[0] # Limpa o IP
+        # -------------------------------------
+
+        # Passamos o IP como terceiro argumento
+        result = router.route_request(query, body, client_ip)
 
         return func.HttpResponse(
             json.dumps(result, ensure_ascii=False, indent=2),
