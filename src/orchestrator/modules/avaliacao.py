@@ -87,7 +87,7 @@ def run_chain(query: str, context_data: dict):
     # Injeção de Variáveis
     final_prompt = template.replace("{pergunta}", query)
     final_prompt = final_prompt.replace("{contexto}", context_str)
-    final_prompt = final_prompt.replace("{sub_intencao}", sub_intencao)
+    final_prompt = final_prompt.replace("{sub_intencao}", str(sub_intencao))
     final_prompt = final_prompt.replace("{emocao}", intent.get("emocao", "neutro"))
     
     # Geração da Resposta via LLM
