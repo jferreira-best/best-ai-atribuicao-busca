@@ -94,9 +94,9 @@ def run_chain(query: str, context_data: dict):
     messages = [{"role": "user", "content": final_prompt}]
     
     # Temperatura baixa para seguir as instruções de suporte rigorosamente
-    temp = 0.1 if "suporte" in str(sub_intencao) else 0.3
+    temp = 0.1 if "suporte" in str(sub_intencao) else 0.2
     
-    resp, _, text = call_api_with_messages(messages, max_tokens=1500, temperature=temp)
+    resp, _, text = call_api_with_messages(messages, max_tokens=800, temperature=temp)
     
     # Limpeza dos metadados
     raw_sources = [d['meta'] for d in docs]

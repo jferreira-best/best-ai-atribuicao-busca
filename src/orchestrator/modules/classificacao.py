@@ -8,7 +8,7 @@ def run_chain(query: str, context_data: dict):
     query_lower = query.lower()
     
     # 1. Recuperação (RAG)
-    docs = rag_core.retrieve_context(query, top_k=6)
+    docs = rag_core.retrieve_context(query, top_k=6) # Top 6 para garantir que pegue Anexos I e II
 
     # Formata contexto para string
     context_str = "\n\n".join([f"[{d['meta']}]\n{d['content']}" for d in docs])
@@ -31,11 +31,11 @@ def run_chain(query: str, context_data: dict):
     # 4. Geração da Resposta
     messages = [{"role": "user", "content": final_prompt}]
     
-    # Temperatura 0.0 ou 0.1 para garantir precisão matemática nas tabelas
-    # Max Tokens 2000 para permitir explicações longas e detalhadas
-    resp, _, text = call_api_with_messages(messages, max_tokens=1500, temperature=0.0)
+    # Temperature 0.0: Rigor matemático total.
+    # Max Tokens 1000: Suficiente para tabelas, mas evita textos longos demais.
+    resp, _, text = call_api_with_messages(messages, max_tokens=1000, temperature=0.0)
     
-    # Limpeza dos metadados
+    # Limpeza dos metadados das fontes
     raw_sources = [d['meta'] for d in docs]
     cleaned_sources = [s.split('|')[0].strip() for s in raw_sources]
 
