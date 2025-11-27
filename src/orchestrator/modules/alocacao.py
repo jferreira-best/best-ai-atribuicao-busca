@@ -28,9 +28,15 @@ def run_chain(query: str, context_data: dict):
     messages = [{"role": "user", "content": final_prompt}]
     resp, _, text = call_api_with_messages(messages, max_tokens=800)
     
+    # Limpeza dos metadados antes de enviar para o retorno
+    raw_sources = [d['meta'] for d in docs]
+    # Faz o split pelo pipe '|' e pega apenas a primeira parte (o nome do arquivo)
+    cleaned_sources = [s.split('|')[0].strip() for s in raw_sources]
+
     return {
         "resposta": text,
         "modulo": "alocacao",
-        "fontes": deduplicate_list([d['meta'] for d in docs]), # <--- AQUI: Envolva a lista com a função
+        "fontes": deduplicate_list(cleaned_sources),
         "debug_intent": intent
     }
+
