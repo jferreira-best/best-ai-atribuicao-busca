@@ -5,31 +5,29 @@ from src.orchestrator import router
 
 app = func.FunctionApp()
 
+
 @app.function_name(name="search_atribuicao")
 @app.route(route="search_atribuicao", auth_level=func.AuthLevel.ANONYMOUS, methods=['POST'])
 def http_search_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Recebendo requisição no Orquestrador V2 (Fast Track).')
+    logging.info('Recebendo requisição no Orquestrador de Agentes Docente.')
 
     try:
         body = req.get_json()
-        
-        # Agora aceitamos 'query' OU 'messages' (para compatibilidade futura)
-        # Mas o nosso router foca na ultima mensagem + histórico
-        
         query = body.get("query")
-        # Se o front mandar apenas query, o historico será vazio
         
         if not query:
-            return func.HttpResponse("JSON inválido: 'query' é obrigatório", status_code=400)
+            return func.HttpResponse("JSON inválido", status_code=400)
 
-        # Captura de IP
+        # --- CAPTURA DE IP (HACK PARA DEV) ---
+        # Tenta pegar o IP real (se estiver na nuvem) ou local
         client_ip = req.headers.get("x-forwarded-for")
         if not client_ip:
-            client_ip = "127.0.0.1"
+            client_ip = "127.0.0.1" # Fallback local
         else:
-            client_ip = client_ip.split(',')[0].split(':')[0]
+            client_ip = client_ip.split(',')[0].split(':')[0] # Limpa o IP
+        # -------------------------------------
 
-        # Passamos o body inteiro para o router extrair o histórico se existir
+        # Passamos o IP como terceiro argumento
         result = router.route_request(query, body, client_ip)
 
         return func.HttpResponse(

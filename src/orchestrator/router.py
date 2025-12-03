@@ -1,177 +1,143 @@
 import os
-import hashlib
-import unicodedata
-from azure.data.tables import TableClient
-from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+import logging
+from src.shared.llm import call_api_with_messages
 from src.orchestrator import classifier
-# ATENÇÃO: Verifique se o nome do seu arquivo é 'avaliacao.py' ou 'avaliacao_2711_1637.py' e ajuste o import abaixo se necessário
-from src.orchestrator.modules import avaliacao, classificacao, alocacao, fora_escopo
+from src.search import rag_core
 
-# ==============================================================================
-# CONFIGURAÇÕES GLOBAIS
-# ==============================================================================
-
-# Cache de Respostas (Performance apenas, não guarda estado de conversa)
-RESPONSE_CACHE = {}
-
-# Configuração do Azure Table Storage
-TABLE_NAME = "ChatEstado"
-CONN_STR = os.environ.get("AzureWebJobsStorage")
-
-# ==============================================================================
-# FUNÇÕES AUXILIARES (ROBUSTEZ & BANCO DE DADOS)
-# ==============================================================================
-
-def normalizar_texto(texto):
-    """Remove acentos, caracteres especiais e converte para minúsculo."""
-    if not texto: return ""
-    return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8').lower()
-
-def eh_intencao_suporte(query):
+# --- Helpers de Arquivo ---
+def _load_prompt(filename):
     """
-    Verifica se a query contém radicais de suporte de forma robusta.
-    Pega: 'duvida', 'dúvidas', 'ajuda', 'socorro', 'entendi', 'entender', etc.
+    Carrega o prompt procurando na pasta src/prompts relativo a este arquivo.
     """
-    query_norm = normalizar_texto(query)
-    # Lista de radicais (o "cerne" da palavra)
-    radicais = [
-        "chamado", "abrir", "suporte", "ajuda", "socorro", 
-        "entend", "reclam", "duvid", "confus", "errad", "incapaz", "problema"
-    ]
-    return any(r in query_norm for r in radicais)
-
-def get_table_client():
-    """Conecta ao Table Storage e cria a tabela se não existir."""
     try:
-        client = TableClient.from_connection_string(conn_str=CONN_STR, table_name=TABLE_NAME)
-        try:
-            client.create_table()
-        except ResourceExistsError:
-            pass
-        return client
-    except Exception as e:
-        print(f"Erro crítico ao conectar no Table Storage: {e}")
-        return None
-
-def get_user_status(user_id):
-    """Lê o status atual da conversa do usuário."""
-    client = get_table_client()
-    if not client: return None
-    try:
-        entity = client.get_entity(partition_key="chat_session", row_key=user_id)
-        return entity.get("status")
-    except ResourceNotFoundError:
-        return None
-
-def set_user_status(user_id, status):
-    """Salva o status na tabela."""
-    client = get_table_client()
-    if not client: return
-    entity = {
-        "PartitionKey": "chat_session",
-        "RowKey": user_id,
-        "status": status
-    }
-    client.upsert_entity(entity)
-
-def clear_user_status(user_id):
-    """Remove o status (limpa a memória da conversa)."""
-    client = get_table_client()
-    if not client: return
-    try:
-        client.delete_entity(partition_key="chat_session", row_key=user_id)
-    except ResourceNotFoundError:
-        pass
-
-# ==============================================================================
-# ROTEADOR PRINCIPAL
-# ==============================================================================
-
-def route_request(query: str, full_body: dict, client_ip: str = "demo_ip"):
-    
-    query_lower = query.strip().lower()
-    
-    # -------------------------------------------------------------------------
-    # 1. LÓGICA DE IDENTIFICAÇÃO DO USUÁRIO
-    # -------------------------------------------------------------------------
-    # 1. Tenta pegar o ID oficial do JSON (Produção)
-    # 2. Se não tiver, usa o IP do Cliente (Desenvolvimento)
-    # 3. Se tudo falhar, usa 'usuario_demo'
-    user_id = full_body.get("user_id")
-    if not user_id:
-        # Sanitiza o IP para usar como chave (remove pontos e : )
-        safe_ip = client_ip.replace('.', '_').replace(':', '_')
-        user_id = f"dev_user_{safe_ip}"
-        print(f"⚠️ Aviso: Usando ID baseado em IP: {user_id}")
-
-    # Recupera estado do banco
-    current_status = get_user_status(user_id)
-    print(f"🔍 Status atual do usuário {user_id}: {current_status}")
-
-    # -------------------------------------------------------------------------
-    # 2. VERIFICAÇÃO DE INTERATIVIDADE (Fluxo em andamento?)
-    # -------------------------------------------------------------------------
-    if current_status == "aguardando_trio":
+        # Pega o caminho absoluto deste arquivo (src/orchestrator/router.py)
+        current_file_path = os.path.abspath(__file__)
         
-        # Cenário A: Usuário respondeu SIM (Positivo)
-        termos_sim = ["sim", "já", "ja", "positivo", "falei", "s", "ok", "fiz", "aham", "yes"]
-        # Verifica se alguma palavra da resposta está na lista de positivos
-        if any(t in query_lower.split() for t in termos_sim):
-            print("🔄 Fluxo: Usuário confirmou. Salvando fim da sessão.")
-            clear_user_status(user_id) # Limpa o banco
-            return avaliacao.run_chain(query, {"intent": {"sub_intencao": "suporte_entregar_link"}})
+        # Sobe dois níveis para chegar em 'src' (src/orchestrator -> src)
+        src_dir = os.path.dirname(os.path.dirname(current_file_path))
+        
+        # Monta o caminho final: src/prompts/filename
+        prompt_path = os.path.join(src_dir, "prompts", filename)
+        
+        # Normaliza o caminho (arruma barras invertidas no Windows)
+        prompt_path = os.path.normpath(prompt_path)
 
-        # Cenário B: Usuário respondeu NÃO (Negativo)
-        termos_nao = ["não", "nao", "ainda não", "negativo", "n", "nunca", "nop"]
-        if any(t in query_lower for t in termos_nao):
-            print("🔄 Fluxo: Usuário negou. Salvando fim da sessão.")
-            clear_user_status(user_id) # Limpa o banco
-            return avaliacao.run_chain(query, {"intent": {"sub_intencao": "suporte_negar_atendimento"}})
+        logging.info(f"Tentando carregar prompt em: {prompt_path}")
+
+        if os.path.exists(prompt_path):
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                return f.read()
+        else:
+            logging.error(f"ARQUIVO NÃO EXISTE: {prompt_path}")
+            # Tentativa de fallback na raiz (caso mova a pasta depois)
+            root_path = os.path.join(os.getcwd(), "prompts", filename)
+            if os.path.exists(root_path):
+                with open(root_path, "r", encoding="utf-8") as f:
+                    return f.read()
             
-        # Cenário C: Resposta nada a ver -> Limpa o estado para não travar o usuário
-        # Ex: Usuário perguntou outra coisa no meio do fluxo.
-        clear_user_status(user_id)
+            return f"Erro: Arquivo '{filename}' não encontrado em {prompt_path}"
 
-    # -------------------------------------------------------------------------
-    # 3. VERIFICAÇÃO DE CACHE (Se não for interativo)
-    # -------------------------------------------------------------------------
-    query_key = hashlib.md5(query_lower.encode('utf-8')).hexdigest()
-    if query_key in RESPONSE_CACHE:
-        print(f"⚡ Cache Hit! Retornando resposta instantânea.")
-        return RESPONSE_CACHE[query_key]
+    except Exception as e:
+        logging.error(f"Erro crítico ao ler arquivo: {e}")
+        return "Erro: Falha na leitura do template."
 
-    # -------------------------------------------------------------------------
-    # 4. FAST TRACK - INÍCIO DO SUPORTE (DETECÇÃO ROBUSTA)
-    # -------------------------------------------------------------------------
-    # Usa a função auxiliar que busca radicais (pega "dúvidas", "ajuda", "chamado")
-    if eh_intencao_suporte(query):
-        print(f"🚦 Iniciando Fluxo Interativo no Banco de Dados (Detectado por Radical)...")
+def _format_history(messages):
+    """Converte lista de JSON em texto para o LLM entender o contexto"""
+    if not messages:
+        return "Nenhum histórico."
+    formatted = ""
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        formatted += f"{role.upper()}: {content}\n"
+    return formatted
+
+# --- Função Principal ---
+def route_request(last_message: str, full_body: dict, client_ip: str):
+    """
+    Roteador Inteligente (Fast Track)
+    """
+    # 1. Preparar Histórico
+    raw_history = full_body.get("historico", [])
+    history_text = _format_history(raw_history)
+
+    # 2. Consultar o "Cérebro" (LLM Router)
+    router_template = _load_prompt("router_v2.md")
+    
+    # Validação de segurança para não gastar token com prompt de erro
+    if "Erro:" in router_template:
+        logging.error(f"Abortando router. Template inválido: {router_template}")
+        return {
+            "resposta": "Erro interno: Template de roteamento não encontrado.",
+            "comando_executado": "ERROR"
+        }
+
+    router_prompt = router_template.replace("{historico}", history_text).replace("{ultima_mensagem}", last_message)
+    
+    # Chama LLM rápido
+    try:
+        msgs = [{"role": "system", "content": "Você é um roteador estrito."}, {"role": "user", "content": router_prompt}]
+        _, _, decision_cmd = call_api_with_messages(msgs, max_tokens=15, temperature=0.0)
+        decision_cmd = decision_cmd.strip().upper() if decision_cmd else "CMD_TECNICA"
+    except Exception as e:
+        logging.error(f"Erro LLM Router: {e}")
+        decision_cmd = "CMD_TECNICA"
+
+    logging.info(f"Router Decision: {decision_cmd} | IP: {client_ip}")
+
+    # 3. Executar a Decisão
+    response_text = ""
+    source_docs = []
+
+    if decision_cmd == "CMD_TECNICA":
+        intent_data = classifier.classify_intent(last_message)
+        modulo = intent_data.get("modulo", "fora_escopo")
         
-        # SALVA NO BANCO QUE ESTAMOS ESPERANDO RESPOSTA
-        set_user_status(user_id, "aguardando_trio")
+        if modulo == "fora_escopo":
+             response_text = _load_prompt("templates/fora_escopo.md")
+        else:
+             context_docs = rag_core.retrieve_context(last_message)
+             
+             # Formata contexto
+             context_text = "\n\n".join([f"{d['content']} (Fonte: {d['meta']})" for d in context_docs])
+             
+             # Carrega prompt técnico (ex: technical/avaliacao.md)
+             # O classifier retorna 'avaliacao', 'classificacao', etc.
+             # Se for necessário ajustar o nome do arquivo, faça aqui.
+             # Supondo que seus arquivos sejam: avaliacao.md, classificacao.md
+             
+             tech_filename = f"technical/{modulo}.md"
+             tech_prompt = _load_prompt(tech_filename)
+             
+             if "Erro:" in tech_prompt:
+                 # Fallback se não achar o específico
+                 logging.warning(f"Prompt técnico {tech_filename} não achado. Usando base_agent.")
+                 tech_prompt = _load_prompt("base_agent.md")
+
+             final_sys_prompt = tech_prompt.replace("{contexto}", context_text).replace("{sub_intencao}", intent_data.get("sub_intencao", "geral")).replace("{emocao}", "neutro")
+             
+             rag_msgs = [{"role": "system", "content": final_sys_prompt}, {"role": "user", "content": last_message}]
+             _, _, response_text = call_api_with_messages(rag_msgs, max_tokens=800, temperature=0.3)
+             source_docs = context_docs
+
+    elif decision_cmd == "CMD_ESCOLA":
+        response_text = _load_prompt("templates/escola.md")
         
-        return avaliacao.run_chain(query, {"intent": {"sub_intencao": "suporte_perguntar_trio"}})
+    elif decision_cmd == "CMD_REGIONAL":
+        response_text = _load_prompt("templates/regional.md")
+        
+    elif decision_cmd == "CMD_CHAMADO":
+        response_text = _load_prompt("templates/chamado.md")
 
-    # -------------------------------------------------------------------------
-    # 5. FLUXO NORMAL (Classificador LLM)
-    # -------------------------------------------------------------------------
-    print(f"🧠 Chamando Classificador para: '{query}'")
-    intent = classifier.classify_intent(query)
-    
-    modulo = intent.get("modulo", "").lower()
-    
-    context_data = {"intent": intent, "raw_body": full_body}
+    elif decision_cmd == "CMD_FINALIZACAO":
+        response_text = _load_prompt("templates/finalizacao.md")
+        
+    else: 
+        response_text = _load_prompt("templates/fora_escopo.md")
 
-    if modulo == "avaliacao":
-        result = avaliacao.run_chain(query, context_data)
-    elif modulo == "classificacao":
-        result = classificacao.run_chain(query, context_data)
-    elif modulo == "alocacao":
-        result = alocacao.run_chain(query, context_data)
-    else:
-        result = fora_escopo.run_chain(query, context_data)
-
-    # Salva no Cache
-    RESPONSE_CACHE[query_key] = result
-    
-    return result
+    # 4. Montar Retorno
+    return {
+        "resposta": response_text,
+        "comando_executado": decision_cmd,
+        "fontes": [d['meta'] for d in source_docs] if source_docs else []
+    }
