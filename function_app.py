@@ -4,6 +4,7 @@ import json
 from src.orchestrator import router
 
 app = func.FunctionApp()
+#test
 
 @app.function_name(name="search_atribuicao")
 @app.route(route="search_atribuicao", auth_level=func.AuthLevel.ANONYMOUS, methods=['POST'])
