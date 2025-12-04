@@ -42,9 +42,23 @@ def run_chain(query: str, context_data: dict):
     # LÓGICA DE INTERATIVIDADE E SUPORTE
     # Define o contexto sintético com base no estado da conversa (vindo do Router)
     # =========================================================================
-    
+    # 0. NOVA REGRA: DISCREPÂNCIA DE DADOS (Prioridade Alta)
+    if sub_intencao == "reportar_erro_dados":
+        docs = [{
+            "content": """
+            DIRETRIZ DE SISTEMA PRIORITÁRIA:
+            O usuário está relatando uma inconsistência de dados (ex: presença ou notas que divergem da realidade).
+            NÃO tente explicar a regra de cálculo, pois o dado de origem está supostamente errado.
+            
+            RESPOSTA PADRÃO OBRIGATÓRIA:
+            "Como o sistema é automatizado, se os dados apresentados (como presença ou notas) divergem da realidade, isso deve ser tratado como uma correção de dados no sistema. O procedimento é acionar o Trio Gestor na sua unidade escolar para que verifiquem o lançamento e, se necessário, abram um chamado de correção."
+            """,
+            "meta": "Sistema de Suporte | Tipo: Orientação de Dados"
+        }]
+        # Forçamos temperatura baixa para garantir fidelidade à mensagem
+        intent["sub_intencao"] = "suporte_dados"
     # 1. Fase da Pergunta (O Router identificou início de suporte via status)
-    if sub_intencao == "suporte_perguntar_trio":
+    elif sub_intencao == "suporte_perguntar_trio":
         docs = [{
             "content": """
             DIRETRIZ DE SISTEMA PRIORITÁRIA:
@@ -130,7 +144,7 @@ def run_chain(query: str, context_data: dict):
     # Temperatura:
     # 0.1 para Suporte (robótico/preciso)
     # 0.2 para Técnico (preciso, mas fluente)
-    temp = 0.1 if "suporte" in str(sub_intencao) else 0.2
+    temp = 0.1 if "suporte" in str(sub_intencao) or sub_intencao == "reportar_erro_dados" else 0.2
     
     # Max Tokens 800 para respostas concisas e diretas
     resp, _, text = call_api_with_messages(messages, max_tokens=800, temperature=temp)

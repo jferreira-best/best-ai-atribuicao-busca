@@ -4,10 +4,6 @@ from src.search import rag_core
 from src.shared.llm import call_api_with_messages
 from src.shared.utils import deduplicate_list
 
-# ==============================================================================
-# FUNÇÕES AUXILIARES
-# ==============================================================================
-
 def normalizar_texto(texto):
     if not texto: return ""
     return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8').lower()
@@ -17,17 +13,12 @@ RADICAIS_SUPORTE = [
     "chamado", "abrir", "suporte", "ajuda", "socorro", 
     "entend", "reclam", "duvid", "confus", "errad", "incapaz", "problema",
     "travad", "travou", "nao consigo", "erro", "falha", "bug", "fora do ar",
-    "visualiza", "aparece", "sumiu", "acesso", "login","inconsiste", 
-    "incorret", "errad", "nao bate", "nao condiz", "divergen", "sumiu", "painel"
+    "visualiza", "aparece", "sumiu", "acesso", "login"
 ]
 
 def eh_intencao_suporte(query):
     query_norm = normalizar_texto(query)
     return any(radical in query_norm for radical in RADICAIS_SUPORTE)
-
-# ==============================================================================
-# FUNÇÃO PRINCIPAL
-# ==============================================================================
 
 def run_chain(query: str, context_data: dict):
     intent = context_data.get("intent", {})
@@ -35,37 +26,19 @@ def run_chain(query: str, context_data: dict):
     
     docs = []
 
-    # =========================================================================
-    # LÓGICA DE INTERATIVIDADE E SUPORTE
-    # =========================================================================
-    # 0. NOVA REGRA: DISCREPÂNCIA DE DADOS (Prioridade Alta)
-    if sub_intencao == "reportar_erro_dados":
+    # 1. Fase da Pergunta (Router)
+    if sub_intencao == "suporte_perguntar_trio":
         docs = [{
             "content": """
             DIRETRIZ DE SISTEMA PRIORITÁRIA:
-            O usuário está relatando uma inconsistência de dados (ex: presença ou notas que divergem da realidade).
-            NÃO tente explicar a regra de cálculo, pois o dado de origem está supostamente errado.
-            
-            RESPOSTA PADRÃO OBRIGATÓRIA:
-            "Como o sistema é automatizado, se os dados apresentados (como presença ou notas) divergem da realidade, isso deve ser tratado como uma correção de dados no sistema. O procedimento é acionar o Trio Gestor na sua unidade escolar para que verifiquem o lançamento e, se necessário, abram um chamado de correção."
-            """,
-            "meta": "Sistema de Suporte | Tipo: Orientação de Dados"
-        }]
-        # Forçamos temperatura baixa para garantir fidelidade à mensagem
-        intent["sub_intencao"] = "suporte_dados"
-    # 1. Fase da Pergunta (Router mandou perguntar)
-    elif sub_intencao == "suporte_perguntar_trio":
-        docs = [{
-            "content": """
-            DIRETRIZ DE SISTEMA PRIORITÁRIA:
-            O usuário relatou um problema técnico ou de processo (ex: não visualiza, sistema travado).
+            O usuário relatou um problema técnico ou de processo.
             Sua tarefa é EXCLUSIVAMENTE perguntar se ele já acionou o Trio Gestor.
             Responda: "Para prosseguir com sua solicitação, preciso confirmar: O Gerente de Organização Escolar ou o Diretor já foi acionado para verificar esse caso? (Responda Sim ou Não)"
             """,
             "meta": "Sistema de Suporte | Tipo: Instrução"
         }]
 
-    # 2. Fase do Link (Usuário disse SIM)
+    # 2. Fase do Link
     elif sub_intencao == "suporte_entregar_link":
         docs = [{
             "content": """
@@ -76,18 +49,17 @@ def run_chain(query: str, context_data: dict):
             "meta": "Sistema de Suporte | Tipo: Link"
         }]
 
-    # 3. Fase da Negação (Usuário disse NÃO)
+    # 3. Fase da Negação
     elif sub_intencao == "suporte_negar_atendimento":
         docs = [{
             "content": """
             DIRETRIZ DE SISTEMA PRIORITÁRIA:
-            O usuário NÃO falou com a escola ainda.
-            Oriente que questões de sistema e atribuição devem ser reportadas primeiramente na Unidade Escolar (Trio Gestor).
+            Oriente que questões de sistema e atribuição devem ser reportadas primeiramente na Unidade Escolar.
             """,
             "meta": "Sistema de Suporte | Tipo: Orientação"
         }]
 
-    # 4. Fallback de Suporte (Captura "visualizar", "sumiu", "travado")
+    # 4. Fallback de Suporte (Agora pega "visualizar" e "sumiu")
     elif eh_intencao_suporte(query):
          docs = [{
             "content": """
@@ -100,11 +72,9 @@ def run_chain(query: str, context_data: dict):
         }]
          sub_intencao = "suporte_insistencia"
 
-    # 5. Fluxo Normal (RAG Técnico - PEI/Regular)
+    # 5. Fluxo Normal (RAG Técnico)
     else:
         docs = rag_core.retrieve_context(query, top_k=6)
-
-    # =========================================================================
 
     context_str = "\n\n".join([f"[{d['meta']}]\n{d['content']}" for d in docs])
     
@@ -123,8 +93,7 @@ def run_chain(query: str, context_data: dict):
     final_prompt = final_prompt.replace("{sub_intencao}", str(sub_intencao))
     final_prompt = final_prompt.replace("{emocao}", intent.get("emocao", "neutro"))
 
-    # Ajuste de temperatura
-    temp = 0.1 if "suporte" in str(sub_intencao) or sub_intencao == "reportar_erro_dados" else 0.2
+    temp = 0.1 if "suporte" in str(sub_intencao) else 0.2
 
     messages = [{"role": "user", "content": final_prompt}]
     resp, _, text = call_api_with_messages(messages, max_tokens=900, temperature=temp)

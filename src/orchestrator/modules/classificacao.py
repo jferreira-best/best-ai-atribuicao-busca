@@ -39,9 +39,23 @@ def run_chain(query: str, context_data: dict):
     # =========================================================================
     # LÓGICA DE INTERATIVIDADE E SUPORTE (Igual ao módulo Avaliação)
     # =========================================================================
-    
+    # 0. NOVA REGRA: DISCREPÂNCIA DE DADOS (Prioridade Alta)
+    if sub_intencao == "reportar_erro_dados":
+        docs = [{
+            "content": """
+            DIRETRIZ DE SISTEMA PRIORITÁRIA:
+            O usuário está relatando uma inconsistência de dados (ex: presença ou notas que divergem da realidade).
+            NÃO tente explicar a regra de cálculo, pois o dado de origem está supostamente errado.
+            
+            RESPOSTA PADRÃO OBRIGATÓRIA:
+            "Como o sistema é automatizado, se os dados apresentados (como presença ou notas) divergem da realidade, isso deve ser tratado como uma correção de dados no sistema. O procedimento é acionar o Trio Gestor na sua unidade escolar para que verifiquem o lançamento e, se necessário, abram um chamado de correção."
+            """,
+            "meta": "Sistema de Suporte | Tipo: Orientação de Dados"
+        }]
+        # Forçamos temperatura baixa para garantir fidelidade à mensagem
+        intent["sub_intencao"] = "suporte_dados"
     # 1. Fase da Pergunta (Router mandou perguntar)
-    if sub_intencao == "suporte_perguntar_trio":
+    elif sub_intencao == "suporte_perguntar_trio":
         docs = [{
             "content": """
             DIRETRIZ DE SISTEMA PRIORITÁRIA:
@@ -117,7 +131,7 @@ def run_chain(query: str, context_data: dict):
     # Configuração de Temperatura:
     # 0.1 para Suporte (robótico)
     # 0.0 para Classificação (matemático/rigoroso)
-    temp = 0.1 if "suporte" in str(sub_intencao) else 0.0
+    temp = 0.1 if "suporte" in str(sub_intencao) or sub_intencao == "reportar_erro_dados" else 0.2
     
     messages = [{"role": "user", "content": final_prompt}]
     
