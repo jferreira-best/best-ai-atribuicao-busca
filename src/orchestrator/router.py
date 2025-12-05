@@ -85,14 +85,39 @@ def route_request(last_message: str, full_body: dict, client_ip: str):
     
     decision_cmd = "CMD_TECNICA"
     try:
-        msgs = [{"role": "system", "content": "Você é um roteador estrito."}, {"role": "user", "content": router_prompt}]
-        _, _, llm_decision = call_api_with_messages(msgs, max_tokens=15, temperature=0.0)
+        msgs = [
+            {"role": "system", "content": "Você é um roteador estrito."},
+            {"role": "user", "content": router_prompt}
+        ]
+        _, _, llm_decision = call_api_with_messages(
+            msgs,
+            max_tokens=15,
+            temperature=0.0
+        )
         if llm_decision:
             decision_cmd = llm_decision.strip().upper()
     except Exception as e:
         logging.error(f"Erro LLM Router: {e}")
 
-    logging.info(f"Router Decision: {decision_cmd} | IP: {client_ip}")
+    logging.info(f"Router Decision inicial: {decision_cmd} | IP: {client_ip}")
+
+    # 3B. SANITY CHECK COM CLASSIFICADOR
+    # Se o router disser FORA_ESCOPO, verificamos com o classifier
+    if decision_cmd == "CMD_FORA_ESCOPO":
+        try:
+            intent_preview = classifier.classify_intent(last_message)
+            modulo_preview = intent_preview.get("modulo", "fora_escopo")
+            if modulo_preview in ("avaliacao", "classificacao", "alocacao"):
+                logging.info(
+                    f"Override decision para CMD_TECNICA com base no classificador. "
+                    f"Modulo_preview={modulo_preview}"
+                )
+                decision_cmd = "CMD_TECNICA"
+        except Exception as e:
+            logging.error(f"Erro no sanity check do classificador: {e}")
+
+    logging.info(f"Router Decision final: {decision_cmd} | IP: {client_ip}")
+
 
     # 4. Executar Decisão
     response_text = ""
