@@ -1,0 +1,13 @@
+.git*
+.vscode
+local.settings.json
+test
+tests
+env
+.venv
+__pycache__
+*.log
+*.pyc
+run.py
+main.py
+README.md
