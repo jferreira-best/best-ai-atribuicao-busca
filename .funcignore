@@ -1,13 +1,16 @@
-.git*
+# pastas de dev
 .vscode
-local.settings.json
-test
-tests
-env
-.venv
+.git
 __pycache__
-*.log
-*.pyc
-run.py
-main.py
-README.md
+env
+.python_packages
+
+# arquivos locais que não devem ir pro Azure
+local.settings.json
+deploy_final.zip
+deploy_final.zip.zip
+test_integrado.py
+function_app_0212_1800.py
+function_app_1911_1015.py
+mermaid.md
+Readme.md
