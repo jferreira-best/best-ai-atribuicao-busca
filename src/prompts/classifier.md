@@ -34,8 +34,8 @@ Escolha **exatamente um** destes valores para `"modulo"`:
   - fases 1 e 2, cronograma, prazos, manifestação de interesse, inscrição;
   - dificuldade para visualizar a atribuição no sistema.
   As palavras abaixo são fortes indicativos (NÃO precisam aparecer todas):  
-  "atribuição", "atribuir", "escolha de aulas", "PEI", "ensino integral",
-  "credenciamento", "transferência", "mudança de sede", "fase 1", "fase 2",
+  "atribuição", "atribuir", "escolha de aulas", "PEI","Ensino Integral","Programa Ensino Integral", 
+  "ensino integral","credenciamento", "transferência", "mudança de sede", "fase 1", "fase 2",
   "cronograma", "prazo", "inscrição", "manifestação de interesse".
 
 - `fora_escopo`  
@@ -122,6 +122,13 @@ Entrada:
 
 Saída:
 {"modulo": "fora_escopo", "sub_intencao": "processo", "emocao": "neutro", "confianca": 0.9}
+
+---
+Entrada:
+"Quem atua no PEI precisa, obrigatoriamente, cumprir 40 horas semanais em regime de dedicacao excluisiva(RDE)?"
+
+Saída:
+{"modulo": "alocacao","sub_intencao": "processo","emocao": "duvida","confianca": 0.98}
 
 ---
 
