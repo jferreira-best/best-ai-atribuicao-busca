@@ -19,6 +19,11 @@ Escolha **exatamente um** destes valores para `"modulo"`:
   - presença/frequência na avaliação;
   - desempenho docente, avaliação 360, resultado da avaliação;
   - dúvidas do tipo: "por que meu farol está vermelho?", "por que minha nota caiu?", "o que compõe minha avaliação?".
+  Use quando falar de:
+  - Atribuição, escolha de aulas, sedes, transferências;
+  - PEI (regras de entrada, saída, permanência);
+  - **Dimensionamento de pessoal, quantidade de professores, formação de turmas (Módulo);**
+  - Cronogramas e prazos de inscrição/alocação.
 
 - `classificacao`  
   Use quando falar de:

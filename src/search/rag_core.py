@@ -19,112 +19,157 @@ def _get_embedding(text):
         return None
 
 # --- Buscas ---
+# --- Buscas ---
 def _vector_search(vector, top_k):
     if not vector: return []
-    url = f"{settings.SEARCH_ENDPOINT}/indexes/{settings.SEARCH_INDEX}/docs/search?api-version={settings.SEARCH_API_VERSION}"
-    payload = {
-        "vectorQueries": [{"kind": "vector", "vector": vector, "k": top_k, "fields": "content_vector"}],
-        "top": top_k
-    }
+    
     try:
-        r = requests.post(url, headers={"api-key": settings.SEARCH_KEY}, json=payload, timeout=settings.HTTP_TIMEOUT_LONG)
+        k_param = int(top_k) 
+    except:
+        k_param = 5
+    
+    url = f"{settings.SEARCH_ENDPOINT}/indexes/{settings.SEARCH_INDEX}/docs/search?api-version={settings.SEARCH_API_VERSION}"
+    
+    payload = {
+        "vectorQueries": [{
+            "kind": "vector", 
+            "vector": vector, 
+            "k": k_param,
+            "fields": "content_vector"
+        }],
+        "top": k_param,
+        # CORREÇÃO ABAIXO: Removido 'content', mantido apenas 'text'
+        "select": "id, doc_title, text, source_file, norma_tipo, data_publicacao, assunto" 
+    }
+    
+    try:
+        r = requests.post(url, headers={"api-key": settings.SEARCH_KEY, "Content-Type": "application/json"}, json=payload)
+        r.raise_for_status()
         return r.json().get("value", [])
     except Exception as e:
-        logging.error(f"Erro Vector Search: {e}")
+        logging.error(f"Erro vector_search: {e}")
         return []
 
-def _text_search(query, top_k, semantic_config=None):
+def _text_search(query, top_k):
     url = f"{settings.SEARCH_ENDPOINT}/indexes/{settings.SEARCH_INDEX}/docs/search?api-version={settings.SEARCH_API_VERSION}"
-    
-    # Usa a config do payload ou o default do settings
-    config_to_use = semantic_config or settings.SEMANTIC_CONFIG
-    
-    #payload = {"search": query, "top": top_k}
-
     payload = {
         "search": query,
         "top": top_k,
-        "select": "content, title, source_file, norma_tipo" # Traga SÓ o necessário
+        # CORREÇÃO ABAIXO: Removido 'content', mantido apenas 'text'
+        "select": "id, doc_title, text, source_file, norma_tipo, data_publicacao, assunto",
+        "queryType": "semantic",
+        "semanticConfiguration": settings.SEARCH_SEMANTIC_CONFIG,
+        "captions": "extractive",
+        "answers": "extractive|count-3",
+        "queryLanguage": "pt-br"
     }
-
-
-    
-    if settings.ENABLE_SEMANTIC and config_to_use:
-        payload.update({
-            "queryType": "semantic",
-            "semanticConfiguration": config_to_use, # <--- Usa a config dinâmica
-            "captions": "extractive",
-            "answers": "extractive|count-3" # Tenta extrair respostas diretas
-        })
-        
     try:
-        r = requests.post(url, headers={"api-key": settings.SEARCH_KEY}, json=payload, timeout=settings.HTTP_TIMEOUT_LONG)
+        r = requests.post(url, headers={"api-key": settings.SEARCH_KEY, "Content-Type": "application/json"}, json=payload)
+        r.raise_for_status()
         return r.json().get("value", [])
     except Exception as e:
-        logging.error(f"Erro Text Search: {e}")
+        logging.error(f"Erro text_search: {e}")
         return []
 
-# Atualize a função principal para aceitar **kwargs
-def retrieve_context(query: str, top_k=5, **kwargs) -> list:
-    """
-    Executa busca híbrida.
-    kwargs pode conter 'semantic_config' vindo do body da requisição.
-    """
-    sem_config = kwargs.get('semantic_config')
-    
-    # 1. Embeddings
-    vector = _get_embedding(query)
-    
-    # 2. Busca Paralela
-    with ThreadPoolExecutor() as executor:
-        fut_vec = executor.submit(_vector_search, vector, top_k)
-        # Passamos a config dinâmica aqui
-        fut_text = executor.submit(_text_search, query, top_k, semantic_config=sem_config)
-        
-        vec_hits = fut_vec.result()
-        text_hits = fut_text.result()
+def _text_search(query, top_k):
+    url = f"{settings.SEARCH_ENDPOINT}/indexes/{settings.SEARCH_INDEX}/docs/search?api-version={settings.SEARCH_API_VERSION}"
+    payload = {
+        "search": query,
+        "top": top_k,
+        "select": "id, doc_title, content, text, source_file, norma_tipo, data_publicacao, assunto",
+        "queryType": "semantic",
+        "semanticConfiguration": settings.SEARCH_SEMANTIC_CONFIG,
+        "captions": "extractive",
+        "answers": "extractive|count-3",
+        "queryLanguage": "pt-br"
+    }
+    try:
+        r = requests.post(url, headers={"api-key": settings.SEARCH_KEY, "Content-Type": "application/json"}, json=payload)
+        r.raise_for_status()
+        return r.json().get("value", [])
+    except Exception as e:
+        logging.error(f"Erro text_search: {e}")
+        return []
 
-    # --- LOG DE PROVA DE CONCEITO ---
-    print(f"\n--- DIAGNÓSTICO DE BUSCA ---")
-    print(f"Hits Vetoriais: {len(vec_hits)}")
-    print(f"Hits Texto/Semântico: {len(text_hits)}")
+# --- Core RAG ---
+def retrieve_context(user_query: str, top_k: int = 5):
+    """
+    Executa busca Híbrida (Vetorial + Semântica) e retorna contexto enriquecido
+    com metadados de data para decisão inteligente do LLM.
+    """
     
+    # 1. Paraleliza Embedding e Busca Texto
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_emb = executor.submit(_get_embedding, user_query)
+        future_text = executor.submit(_text_search, user_query, top_k)
+        
+        vector = future_emb.result()
+        text_hits = future_text.result()
+        
+        # Só roda busca vetorial se embedding funcionou
+        vec_hits = []
+        if vector:
+            vec_hits = _vector_search(vector, top_k)
+
+    # 2. Diagnóstico Rápido (Log)
+    logging.info(f"Hits Texto: {len(text_hits)} | Hits Vetor: {len(vec_hits)}")
     if text_hits:
         first = text_hits[0]
         rerank_score = first.get('@search.rerankerScore', 'N/A')
-        captions = first.get('@search.captions')
-        print(f"Top Hit Score (Reranker): {rerank_score} (Se > 0, Semântico está ATIVO)")
-        if captions:
-            print(f" Caption Semântico gerado: Sim")
-    print("----------------------------\n")
-    # --------------------------------
+        logging.info(f"Top Hit Score (Reranker): {rerank_score}")
 
     # 3. Deduplicação (Merge Híbrido)
-    # O Reranker Score é a "prova real" da busca semântica. Priorizamos ele.
     all_hits = {}
     
-    # Adiciona hits de texto (que trazem o rerankerScore)
+    # Prioridade para Semantic Ranker (Hits de Texto)
     for h in text_hits:
         all_hits[h['id']] = h
         
-    # Adiciona hits vetoriais (se já não existirem, o vetor serve de backup/enrichment)
+    # Completa com Vetorial (se ID for inédito)
     for h in vec_hits:
         if h['id'] not in all_hits:
             all_hits[h['id']] = h
 
+    # 4. Montagem do Contexto Rico
     context_docs = []
-    for h in all_hits.values():
-        meta = f"Fonte: {filename_from_source(h.get('source_file'))} | Tipo: {h.get('norma_tipo', 'N/A')}"
-        text = clean_text(h.get('content') or h.get('text') or "")
+    
+    # Ordena novamente pelo Reranker Score (se disponível) ou Score padrão
+    sorted_hits = sorted(
+        all_hits.values(), 
+        key=lambda x: x.get('@search.rerankerScore') or x.get('@search.score') or 0, 
+        reverse=True
+    )
+
+    for h in sorted_hits[:top_k]: # Garante top_k final após merge
         
-        # Captura o score para ordenação
-        final_score = h.get('@search.rerankerScore') or h.get('@search.score') or 0
+        # Metadados Essenciais para Hierarquia de Normas
+        src_file = filename_from_source(h.get('source_file'))
+        doc_title = h.get('doc_title') or src_file
+        data_pub = h.get('data_publicacao', 'Data Desconhecida')
+        tipo = h.get('norma_tipo', 'Norma')
+        assunto = h.get('assunto', 'Geral')
+        
+        # Limpeza do texto
+        raw_content = h.get('content') or h.get('text') or ""
+        clean_content = clean_text(raw_content)
+        
+        # Bloco formatado para o LLM entender a hierarquia
+        # Isso permite que o prompt diga: "Priorize a data mais recente"
+        meta_block = (
+            f"Documento: {doc_title}\n"
+            f"Arquivo Original: {src_file}\n"
+            f"Data Publicação: {data_pub}\n"
+            f"Tipo Normativo: {tipo}\n"
+            f"Assunto: {assunto}"
+        )
+        
+        # Formata o chunk final
+        formatted_entry = f"--- INÍCIO DO DOCUMENTO ---\n{meta_block}\n\nCONTEÚDO:\n{clean_content}\n--- FIM DO DOCUMENTO ---\n"
         
         context_docs.append({
-            "content": text,
-            "meta": meta,
-            "score": final_score
+            "content": formatted_entry,
+            "meta": src_file,  # Usado apenas para citação final ao usuário
+            "score": h.get('@search.rerankerScore')
         })
-    
-    # Ordena pelo Reranker Score (maior é melhor)
-    return sorted(context_docs, key=lambda x: x['score'], reverse=True)[:top_k]
+
+    return context_docs
