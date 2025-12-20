@@ -55,7 +55,7 @@ def _text_search(query, top_k):
     payload = {
         "search": query,
         "top": top_k,
-        # CORREÇÃO ABAIXO: Removido 'content', mantido apenas 'text'
+        # CORREÇÃO: Apenas campos que existem no índice (SEM 'content')
         "select": "id, doc_title, text, source_file, norma_tipo, data_publicacao, assunto",
         "queryType": "semantic",
         "semanticConfiguration": settings.SEARCH_SEMANTIC_CONFIG,
@@ -71,28 +71,8 @@ def _text_search(query, top_k):
         logging.error(f"Erro text_search: {e}")
         return []
 
-def _text_search(query, top_k):
-    url = f"{settings.SEARCH_ENDPOINT}/indexes/{settings.SEARCH_INDEX}/docs/search?api-version={settings.SEARCH_API_VERSION}"
-    payload = {
-        "search": query,
-        "top": top_k,
-        "select": "id, doc_title, content, text, source_file, norma_tipo, data_publicacao, assunto",
-        "queryType": "semantic",
-        "semanticConfiguration": settings.SEARCH_SEMANTIC_CONFIG,
-        "captions": "extractive",
-        "answers": "extractive|count-3",
-        "queryLanguage": "pt-br"
-    }
-    try:
-        r = requests.post(url, headers={"api-key": settings.SEARCH_KEY, "Content-Type": "application/json"}, json=payload)
-        r.raise_for_status()
-        return r.json().get("value", [])
-    except Exception as e:
-        logging.error(f"Erro text_search: {e}")
-        return []
-
 # --- Core RAG ---
-def retrieve_context(user_query: str, top_k: int = 5):
+def retrieve_context(user_query: str, top_k: int = 10):
     """
     Executa busca Híbrida (Vetorial + Semântica) e retorna contexto enriquecido
     com metadados de data para decisão inteligente do LLM.
