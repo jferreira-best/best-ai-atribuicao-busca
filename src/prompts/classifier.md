@@ -21,24 +21,24 @@ Se a pergunta contiver termos como: **"boletim", "bimestre", "minha nota" (sem c
 
 - `avaliacao`
   Perguntas sobre **Avaliação de Desempenho do Professor (AD/QAE)**:
-  - Palavras: "devolutiva", "feedback", "farol", "indicadores", "360".
+  - Palavras: "devolutiva", "feedback", "farol", "indicadores", "360", "pontuação da AD".
   - Frases: "o diretor já fez a devolutiva", "não concordo com minha nota".
 
 - `classificacao`
-  Perguntas sobre **Pontuação e Classificação**:
-  - Palavras: "classificação", "pontuação", "vunesp", "tempo de casa".
-  - Frases: "minha pontuação veio errada", "estou classificado errado".
+  Perguntas sobre **Pontuação, Categorias e Classificação**:
+  - Palavras: "classificação", "pontuação", "vunesp", "tempo de casa", **"remananescente"**, **"lei 500"**, "estabilidade", "categoria F".
+  - Frases: "minha pontuação veio errada", "sou remanescente e quero saber minha pontuação".
 
 - `alocacao`
-  Perguntas sobre **Atribuição e PEI**:
-  - Palavras: "atribuição", "pei", "alocação", "fase 1", "fase 2".
+  Perguntas sobre **Atribuição, Contratos e PEI**:
+  - Palavras: "atribuição", "pei", "alocação", "fase 1", "fase 2", "renovação de contrato", **"extinção contratual"**, "duzentas horas".
+  - Frases: "inscrição para o PEI", "escolha de aulas", "meu contrato vence esse ano".
 
 - `fora_escopo`
   Use para:
-  - Assuntos administrativos (holerite, pagamento).
+  - Assuntos administrativos (holerite, pagamento, abono).
   - Alunos (boletim).
-  - **Reclamações Gerais / Ofensas / Frustração com o sistema.**
-
+  - Reclamações Gerais / Ofensas (Apenas se NÃO tiver conteúdo técnico na frase).
 ---
 
 ## 3. SUB-INTENÇÃO
@@ -76,6 +76,10 @@ Saída:
 Entrada: "não concordo com isso"
 Saída:
 {"modulo": "avaliacao", "sub_intencao": "reportar_erro_dados", "emocao": "frustracao", "confianca": 0.85}
+
+Entrada: "sou remanescente, meu contrato vence esse ano"
+Saída:
+{"modulo": "alocacao", "sub_intencao": "processo", "emocao": "duvida", "confianca": 0.99}
 
 ---
 
