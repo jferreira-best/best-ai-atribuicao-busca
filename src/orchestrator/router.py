@@ -56,7 +56,8 @@ def _verificar_trava_exaustao(history):
 
 def _identificar_proximo_passo(last_user_msg, history):
     """
-    LÓGICA DA ESCADA: Identifica o degrau atual baseado na PERGUNTA FINAL feita pelo Bot.
+    LÓGICA DA ESCADA: Identifica o degrau atual e se o usuário SUBIU (Recusa) ou DESCEU (Concordou).
+    ORDEM CRÍTICA: Primeiro checa RECUSA, depois CONCORDÂNCIA.
     """
     if not history: return None
 
@@ -69,50 +70,83 @@ def _identificar_proximo_passo(last_user_msg, history):
     
     if not last_bot_msg: return None
 
-    # 2. Verifica se o usuário está recusando ou insistindo (Normalizado)
     user_txt = _normalize_text(last_user_msg)
+
+    # =========================================================================
+    # 1. PRIMEIRO: VERIFICAÇÃO DE RECUSA (PRIORIDADE ALTA)
+    # =========================================================================
+    # Tem que vir antes para que "não vou fazer" caia aqui, e não em "vou fazer".
     
     triggers_recusa = [
-        # Passado (Já fez e não resolveu)
+        # Passado
         "ja fui", "ja falei", "ja fiz", "ja procurei",
         "nao resolveu", "nao adiantou", "nao adianta",
-        
-        # Discordância (Acha que está errado)
+        # Discordância
         "nao concordo", "esta errado", "discordo", "mentira", "incorreto",
-        
-        # --- NOVOS: Recusa Futura / Teimosia (O que faltava) ---
+        # Recusa Futura / Negação
         "nao vou", "nao irei", "nao quero", "me recuso", 
         "sem chance", "nem a pau", "nao pretendo", "jamais",
-        "nao tenho tempo", "impossivel ir", "nao posso ir"
+        "nao", "nunca"
     ]
     
-    is_recusa = any(t in user_txt for t in triggers_recusa)
+    is_recusa = False
+    for t in triggers_recusa:
+        if t in user_txt:
+            # Tratamento especial para "não" seco (evita quebrar perguntas de Sim/Não)
+            if t == "nao":
+                 termos_instrucao = ["trio gestor", "escola", "regional", "ure", "chamado", "diretor"]
+                 if any(termo in last_bot_msg for termo in termos_instrucao):
+                     is_recusa = True
+            else:
+                is_recusa = True
+            
+            if is_recusa: break
     
-    if not is_recusa: return None
+    # SE FOR RECUSA, SOBE A ESCADA IMEDIATAMENTE
+    if is_recusa:
+        # Degrau 4 -> 5 (Link -> Fim)
+        if "atendimento.educacao.sp.gov.br" in last_bot_msg or "chamado oficial" in last_bot_msg:
+            return "CMD_ENCERRAMENTO_TOTAL"
 
-    # 3. A Lógica da Escada (Hierarquia Otimizada)
+        # Degrau 3 -> 4 (Regional -> Chamado)
+        if "contato com a ure" in last_bot_msg or "unidade regional" in last_bot_msg:
+            return "CMD_CHAMADO"
+
+        # Degrau 2 -> 3 (Escola -> Regional)
+        if "voce vai procurar a escola" in last_bot_msg or "ja realizou esse contato" in last_bot_msg:
+            return "CMD_REGIONAL"
+
+        # Degrau 1 -> 2 (Técnico -> Escola)
+        return "CMD_ESCOLA"
+
+    # =========================================================================
+    # 2. SEGUNDO: VERIFICAÇÃO DE "FINAL FELIZ" (CONCORDÂNCIA)
+    # =========================================================================
+    # Só chega aqui se NÃO foi recusa.
     
-    # FIM DA LINHA (Degrau 4 -> 5)
-    # Identificador: Bot mandou o link do portal
-    if "atendimento.educacao.sp.gov.br" in last_bot_msg or "chamado oficial" in last_bot_msg:
-        return "CMD_ENCERRAMENTO_TOTAL"
+    # Grupo 1: Ações Explícitas
+    triggers_acao = [
+        "irei procurar", "vou procurar", "vou la", "vou ir", 
+        "farei isso", "fazerei isso", "vou fazer", 
+        "vou entrar em contato", "vou ligar", "vou na escola", "vou na diretoria"
+    ]
+    if any(t in user_txt for t in triggers_acao):
+        return "CMD_FINALIZACAO"
 
-    # SUBIDA (Degrau 3 -> 4) - Se bot falou Regional/URE e user reclama -> Chamado
-    # Identificador ÚNICO do CMD_REGIONAL: "voce vai entrar em contato com a ure"
-    if "contato com a ure" in last_bot_msg or "unidade regional" in last_bot_msg:
-        return "CMD_CHAMADO"
+    # Grupo 2: Concordância Simples (Depende do Contexto)
+    triggers_simples = [
+        "ok", "ta bom", "tá bom", "beleza", "combinado", "entendi",
+        "pode deixar", "obrigado", "valeu", "certo", "show", "perfeito", "agradeco",
+        "sim", "uhum", "pode ser", "com certeza"
+    ]
+    
+    if any(t in user_txt for t in triggers_simples):
+        termos_instrucao = ["trio gestor", "escola", "regional", "ure", "chamado", "diretor", "unidade escolar"]
+        if any(termo in last_bot_msg for termo in termos_instrucao):
+            return "CMD_FINALIZACAO"
 
-    # SUBIDA (Degrau 2 -> 3) - Se bot falou Escola/Trio e user reclama -> Regional
-    # Identificador ÚNICO do CMD_ESCOLA: A pergunta final "voce vai procurar a escola...?"
-    # CORREÇÃO CRÍTICA: Não usamos mais apenas "trio gestor" aqui para evitar falso positivo do rodapé técnico.
-    if "voce vai procurar a escola" in last_bot_msg or "ja realizou esse contato" in last_bot_msg:
-        return "CMD_REGIONAL"
+    return None
 
-    # SUBIDA (Degrau 1 -> 2) 
-    # Se houve recusa/discordância e não caiu nos IFs acima (ou seja, não é Regional nem Escola),
-    # então é discordância da resposta TÉCNICA (mesmo que tenha rodapé).
-    # Ação: Mandar para o Trio Gestor.
-    return "CMD_ESCOLA"
 
 
 def _verificar_contexto_continuacao(last_user_msg, history):
