@@ -56,7 +56,7 @@ def _verificar_trava_exaustao(history):
 
 def _identificar_proximo_passo(last_user_msg, history):
     """
-    LÓGICA DA ESCADA: Identifica o degrau atual baseado na PERGUNTA FINAL feita pelo Bot.
+    LÓGICA DA ESCADA: Identifica o degrau atual baseado no que o BOT falou por último.
     """
     if not history: return None
 
@@ -69,51 +69,35 @@ def _identificar_proximo_passo(last_user_msg, history):
     
     if not last_bot_msg: return None
 
-    # 2. Verifica se o usuário está recusando ou insistindo (Normalizado)
+    # 2. Verifica se o usuário está recusando (Normalizado)
     user_txt = _normalize_text(last_user_msg)
     
     triggers_recusa = [
-        # Passado (Já fez e não resolveu)
         "ja fui", "ja falei", "ja fiz", "ja procurei",
         "nao resolveu", "nao adiantou", "nao adianta",
-        
-        # Discordância (Acha que está errado)
-        "nao concordo", "esta errado", "discordo", "mentira", "incorreto",
-        
-        # --- NOVOS: Recusa Futura / Teimosia (O que faltava) ---
-        "nao vou", "nao irei", "nao quero", "me recuso", 
-        "sem chance", "nem a pau", "nao pretendo", "jamais",
-        "nao tenho tempo", "impossivel ir", "nao posso ir"
+        "nao concordo", "esta errado", "discordo",
+        "nao quero"
     ]
     
     is_recusa = any(t in user_txt for t in triggers_recusa)
     
     if not is_recusa: return None
 
-    # 3. A Lógica da Escada (Hierarquia Otimizada)
+    # 3. A Lógica da Escada (Hierarquia)
     
     # FIM DA LINHA (Degrau 4 -> 5)
-    # Identificador: Bot mandou o link do portal
     if "atendimento.educacao.sp.gov.br" in last_bot_msg or "chamado oficial" in last_bot_msg:
         return "CMD_ENCERRAMENTO_TOTAL"
 
     # SUBIDA (Degrau 3 -> 4) - Se bot falou Regional/URE e user reclama -> Chamado
-    # Identificador ÚNICO do CMD_REGIONAL: "voce vai entrar em contato com a ure"
-    if "contato com a ure" in last_bot_msg or "unidade regional" in last_bot_msg:
+    if "regional" in last_bot_msg or "ure" in last_bot_msg or "supervisor" in last_bot_msg:
         return "CMD_CHAMADO"
 
     # SUBIDA (Degrau 2 -> 3) - Se bot falou Escola/Trio e user reclama -> Regional
-    # Identificador ÚNICO do CMD_ESCOLA: A pergunta final "voce vai procurar a escola...?"
-    # CORREÇÃO CRÍTICA: Não usamos mais apenas "trio gestor" aqui para evitar falso positivo do rodapé técnico.
-    if "voce vai procurar a escola" in last_bot_msg or "ja realizou esse contato" in last_bot_msg:
+    if "trio gestor" in last_bot_msg or "escola" in last_bot_msg or "diretor" in last_bot_msg:
         return "CMD_REGIONAL"
 
-    # SUBIDA (Degrau 1 -> 2) 
-    # Se houve recusa/discordância e não caiu nos IFs acima (ou seja, não é Regional nem Escola),
-    # então é discordância da resposta TÉCNICA (mesmo que tenha rodapé).
-    # Ação: Mandar para o Trio Gestor.
-    return "CMD_ESCOLA"
-
+    return None
 
 def _verificar_contexto_continuacao(last_user_msg, history):
     if not history: return None
