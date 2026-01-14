@@ -38,6 +38,7 @@ Use APENAS se não encaixar em nenhum módulo técnico acima.
 * **Sub-intenção `duvida_aluno`:** Boletim, notas de aluno, provão, Saresp (foco aluno), carteirinha.
 * **Sub-intenção `reclamacao_geral`:** Xingamentos, "sistema lixo", "nada funciona", "quero falar com atendente" (SEM citar termo técnico).
 * **Sub-intenção `administrativo`:** Pagamento, Holerite, Perícia Médica, Aposentadoria.
+* **Sub-intenção `aleatorio`:** Assuntos variados não relacionados ao trabalho: Futebol (Palmeiras, Mundial, times), Política, Religião, Culinária, Piadas, Clima, "Sensitive Query", ou conversa fiada sem contexto técnico.*Sub-intenção `administrativo`:** Pagamento, Holerite, Perícia Médica, Aposentadoria.
 
 ---
 
