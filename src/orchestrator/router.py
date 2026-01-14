@@ -343,7 +343,7 @@ def route_request(last_message: str, body: dict, client_ip: str):
         else:
             msgs = [
                 "Sou um assistente focado em regras de **Avaliação de Desempenho**, **Classificação** e **Alocação de Aulas**.",
-                "Consigo ajudar com ***Avaliação de Desempenho**, **Classificação** e **Alocação de Aulas**. Assuntos administrativos e aleatórios fogem da minha alçada."
+                "Consigo ajudar com **Avaliação de Desempenho**, **Classificação** e **Alocação de Aulas**. Assuntos administrativos e aleatórios fogem da minha alçada."
             ]
             response_text = random.choice(msgs)
 
