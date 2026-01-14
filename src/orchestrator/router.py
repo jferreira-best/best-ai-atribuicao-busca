@@ -342,8 +342,8 @@ def route_request(last_message: str, body: dict, client_ip: str):
              response_text = random.choice(msgs_aluno)
         else:
             msgs = [
-                "Sou um assistente focado em regras de **Avaliação** e **Atribuição**.",
-                "Consigo ajudar com **Classificação** e **Alocação**. Assuntos administrativos e aleatórios fogem da minha alçada."
+                "Sou um assistente focado em regras de **Avaliação de Desempenho**, **Classificação** e **Alocação de Aulas**.",
+                "Consigo ajudar com ***Avaliação de Desempenho**, **Classificação** e **Alocação de Aulas**. Assuntos administrativos e aleatórios fogem da minha alçada."
             ]
             response_text = random.choice(msgs)
 
