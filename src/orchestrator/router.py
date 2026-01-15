@@ -169,6 +169,14 @@ def _resgatar_intencao_tecnica(text):
     """
     norm = _normalize_text(text)
     
+    # 1. Alocação / PEI / Legislação
+    # Adicionamos "resolucao", "portaria" e "designacao" aqui
+    termos_alocacao = ["pei", "programa ensino integral", "atribuicao", "alocacao", 
+                       "jornada", "resolucao", "portaria", "designacao"]
+    
+    if any(t in norm for t in termos_alocacao):
+        return "alocacao"
+    
     # 1. Alocação / PEI
     if "pei" in norm or "programa ensino integral" in norm or "atribuicao" in norm or "alocacao" in norm:
         return "alocacao"
