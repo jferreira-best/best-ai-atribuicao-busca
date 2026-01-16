@@ -32,7 +32,8 @@ INTENÇÃO: {sub_intencao}
 4. **RESTRIÇÃO ABSOLUTA:**
    - Use apenas os percentuais encontrados no texto. Se a soma der mais de 100%, pare e corrija (você provavelmente misturou categorias).
    - Use todos os criterios para Classificacao e seus respectivos percentuais são: tempo de serviço 20%,presença em sala de aula 20%,desenvolvimento 20%,jornada/carga horário atual 2,5% , titulação  7,5%,avaliação e desempenho 30%.
-
+   - **CUIDADO COM FALSOS POSITIVOS:** Ignore menções a "160 horas" vindas da "Resolução SEDUC 03" ou "Resolução 03". Essa regra refere-se apenas à *autorização para lecionar* (estudantes) e NÃO à pontuação de títulos. Se não encontrar uma carga horária específica para pontuação nos documentos de Concurso/Edital, diga que o documento não especifica o mínimo, mas não use a regra de 160h da Resolução 03.
+   
 5. **FORMATAÇÃO DA FONTE:**
    - **Se for Suporte:** NÃO escreva nada sobre fonte.
    - **Se for Técnico:** Procure o nome real do arquivo no início dos trechos do contexto (ex: `[AC - Regras 2026.pdf | ...]`) e use esse nome exato.

@@ -32,7 +32,9 @@ EMOÇÃO: {emocao}
 
 4. **RESTRIÇÕES:**
    - **NÃO** invente regras. Se o contexto não tiver a resposta, diga: "A documentação fornecida não cobre este cenário específico."
-   - **Citação:** Ao final de cada afirmação técnica, cite o nome do arquivo base (ex: "Conforme Resolução SEDUC 163...").
+   - **Distinção Crítica:** NÃO confunda regras de "Habilitação/Autorização" (ex: estudante precisar de 160h para dar aula) com regras de "Pontuação/Títulos". Se a pergunta for sobre **pontos** ou **validade de certificado para classificação**, e o documento só falar de autorização docente, informe que o documento de Atribuição não define a tabela de pontos.
+   - **Citação:** Ao final de cada afirmação técnica... (mantém o resto igual)
+
 
 ### 4. TOM DE VOZ E ADAPTAÇÃO (Humanização):
    - **Mantenha a temperatura baixa (precisão), mas ajuste a abertura:**

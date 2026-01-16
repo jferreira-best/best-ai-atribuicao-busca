@@ -18,9 +18,10 @@ Assuntos sobre Avaliação de Desempenho (QAE) e Feedback.
 * *Exemplo:* "Por que meu farol está vermelho?" -> `avaliacao`
 
 #### **`classificacao`**
-Assuntos sobre Pontuação para atribuição e Histórico.
-* **Conceitos Chave:** Classificação, Pontuação, Vunesp, Tempo de casa, Tempo de magistério, Remanescente, Lei 500, Categoria F, Recurso de pontuação.
-* **Gatilhos:** "classificacao", "pontuacao", "remanescente", "lista", "classificado".
+Assuntos sobre Pontuação para atribuição, Títulos e Histórico.
+* **Conceitos Chave:** Classificação, Pontuação, Vunesp, Tempo de casa, Tempo de magistério, Remanescente, Lei 500, Categoria F, Recurso de pontuação, **Certificados**, **Mestrado**, **Doutorado**, **Especialização**, **Diplomas**, **Cursos para pontuar**.
+* **Gatilhos:** "classificacao", "pontuacao", "remanescente", "lista", "classificado", "meus pontos", "validar curso", "aceita ead".
+* *Exemplo:* "Meu curso de 180 horas vale nota?" -> `classificacao`
 * *Exemplo:* "Sou remanescente, como fica minha pontuação?" -> `classificacao`
 
 #### **`alocacao`**

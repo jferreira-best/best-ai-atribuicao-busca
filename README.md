@@ -55,3 +55,4 @@ src/
 └── function_app.py       # Entry point da Azure Function
 
 #rodar direto :func azure functionapp publish see-d-crm-ingestaobot --build remote
+#az login --use-device-code

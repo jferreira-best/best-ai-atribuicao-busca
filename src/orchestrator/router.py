@@ -169,25 +169,30 @@ def _resgatar_intencao_tecnica(text):
     """
     norm = _normalize_text(text)
     
-    # 1. Alocação / PEI / Legislação
-    # Adicionamos "resolucao", "portaria" e "designacao" aqui
-    termos_alocacao = ["pei", "programa ensino integral", "atribuicao", "alocacao", 
-                       "jornada", "resolucao", "portaria", "designacao"]
-    
-    if any(t in norm for t in termos_alocacao):
-        return "alocacao"
-    
-    # 1. Alocação / PEI
-    if "pei" in norm or "programa ensino integral" in norm or "atribuicao" in norm or "alocacao" in norm:
-        return "alocacao"
-    
-    # 2. Avaliação
+    # 1. Avaliação (QAE/Farol - Prioridade Máxima por ser muito específico)
+    # Não alteramos nada aqui, continua verificando primeiro.
     if "qae" in norm or "farol" in norm or "indiciadores" in norm or "devolutiva" in norm:
         return "avaliacao"
 
-    # 3. Classificação
-    if "vunesp" in norm or "pontuacao" in norm or "classificacao" in norm or "remanescente" in norm:
+    # 2. Classificação / Pontuação (MUDANÇA: Subiu de prioridade)
+    # Agora verificamos isso ANTES de Alocação. Adicionamos "títulos", "diploma", etc.
+    # Assim, "pontuação da atribuição" cai aqui, e não em Alocação.
+    termos_classificacao = [
+        "vunesp", "pontuacao", "pontos", "classificacao", "remanescente", 
+        "diploma", "certificado", "mestrado", "doutorado", "titulos"
+    ]
+    if any(t in norm for t in termos_classificacao):
         return "classificacao"
+    
+    # 3. Alocação / PEI / Legislação (Ficou por último)
+    # Se não for pontuação nem avaliação, mas tiver termos de atribuição, cai aqui.
+    termos_alocacao = [
+        "pei", "programa ensino integral", "atribuicao", "alocacao", 
+        "jornada", "resolucao", "portaria", "designacao", "artigo 22"
+    ]
+    
+    if any(t in norm for t in termos_alocacao):
+        return "alocacao"
         
     return None
 
