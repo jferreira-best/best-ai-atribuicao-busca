@@ -116,7 +116,7 @@ def _identificar_proximo_passo(last_user_msg, history):
     # 4. SUPER LISTA DE ESCALAÇÃO (Aumentada e Validada)
     triggers_escalacao = [
         # Ação já realizada (Passado)
-        "ja fui", "ja falei", "ja fiz", "ja procurei", "ja liguei", 
+        "ja fui", "ja falei", "ja fiz","já","ja", "ja procurei", "ja liguei", 
         "ja conversei", "ja estive", "ja realizei", "ja tentei",
         "ja entrei em contato", "ja mandei", "ja enviei", "ja questionei",
         "ja perguntei", "ja informei", "ja passei", "ja solicitei",
