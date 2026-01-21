@@ -115,71 +115,40 @@ def _identificar_proximo_passo(last_user_msg, history):
 
     # 4. SUPER LISTA DE ESCALAÇÃO (Aumentada e Validada)
     triggers_escalacao = [
-        # --- GRUPO A: Ação Já Realizada (Passado) ---
-        "ja fui", "ja falei", "ja fiz", "ja procurei", "ja liguei", 
+        # Ação já realizada (Passado)
+        "ja fui", "ja falei", "ja fiz","já","ja", "ja procurei", "ja liguei", 
         "ja conversei", "ja estive", "ja realizei", "ja tentei",
         "ja entrei em contato", "ja mandei", "ja enviei", "ja questionei",
         "ja perguntei", "ja informei", "ja passei", "ja solicitei",
-        "ja reclamei", "ja reportei", "ja vi", "ja consultei",
-        "ja contatei", "ja busquei", "ja notifiquei", "ja protocolei",
-        "ja abri", "ja registrei", "ja comuniquei", "ja avisei",
-        "ja cobrei", "ja fui la", "ja estive la", "ja compareci",
-        "ja", "fui la", "estive la", "falei com eles", "conversei com eles",
+        "ja reclamei", "ja reportei", "ja vi",
         
-        # --- GRUPO B: Ineficácia / Problema Persiste (Onde a escola falhou) ---
+        # Ineficácia / Problema Persiste
         "nao resolveu", "nao adiantou", "nao adianta", "nao solucionou",
         "nao funcionou", "nao deu certo", "nao obtive", "nao mudou",
         "sem sucesso", "sem exito", "sem resposta", "sem solucao",
-        "sem retorno", "sem previsao", "nada feito", "nada resolvido",
-        "continua igual", "mesmo problema", "nenhuma solucao", "em vao",
-        "foi inutil", "perda de tempo", "eles nao resolvem", "eles nao sabem",
-        "ninguem sabe", "ninguem resolve", "nao foi resolvido",
-        "eles nao irao mudar", "eles nao mudam", "eles nao ajudam",
-        "eles ignoram", "eles nao explicam", "eles nao respondem",
-        "nao teve jeito", "ficou na mesma", "travado", "parado",
-        "nao sabem explicar", "nao sabem orientar", "nao me ajudaram",
+        "nada feito", "nada resolvido", "continua igual", "mesmo problema",
+        "nenhuma solucao", "em vao", "foi inutil", "perda de tempo",
+        "eles nao resolvem", "eles nao sabem", "ninguem sabe",
+        "nao foi resolvido", "eles nao irao mudar",
         
-        # --- GRUPO C: Perguntas de Próximo Passo (Futuro / Desorientação) ---
+        # --- CORREÇÃO AQUI: Perguntas de Próximo Passo (Futuro) ---
         "e agora", "e depois", "depois disso", "apos isso", 
         "o que faco", "o que fazer", "fazer o que", "faco o que",
         "qual o proximo", "qual o passo", "proxima etapa", "proximo passo",
-        "para onde vou", "aonde vou", "onde ir", "onde devo ir",
-        "quem procuro", "procuro quem", "quem resolve", "com quem falo",
-        "falo com quem", "pra quem ligo", "qual telefone", "tem contato",
-        "mais alguem", "outra opcao", "outra alternativa", "outro caminho",
-        "como proceder", "como faco", "como agir", "como resolver",
-        "entao o que", "se nao der certo", "e ai", "qual a saida",
-        "qual a solucao", "quem pode ajudar", "quem pode resolver",
-        "me orienta", "me ajuda", "o que resta"
+        "para onde vou", "aonde vou", "onde ir",
+        "quem procuro", "procuro quem", "quem resolve",
+        "mais alguem", "outra opcao", "outra alternativa",
+        "como proceder", "como faco", "como agir",
+        "entao o que", "se nao der certo", "e ai"
     ]
 
-    # 5. SUPER LISTA DE RECUSA (Expandida - Recusa, Discordância e Inação)
+    # 5. LISTA DE RECUSA (Usuário NÃO QUER IR / NÃO FOI -> Insistência na Escola)
     triggers_recusa = [
-        # --- GRUPO A: Negação de Ir (Recusa) ---
+        "nao concordo", "esta errado", "discordo", "mentira", "incorreto",
         "nao vou", "nao irei", "nao quero", "me recuso", "sem chance", 
         "jamais", "nunca", "de jeito nenhum", "nem pensar", 
-        "recuso", "nao pretendo", "nao estou afim", "nao vou ir",
-        "nao vou procurar", "nao vou falar", "nao vou ligar",
-        "impossivel ir", "inviavel", "nao rola", "nao da para ir",
-        "nao posso ir", "nao tenho como ir", "nao quero ir",
-        
-        # --- GRUPO B: Discordância dos Dados/Regra (O Usuário acha que está certo) ---
-        "nao concordo", "esta errado", "discordo", "mentira", "incorreto",
-        "errada", "equivocado", "falso", "absurdo", "injusto", "falha",
-        "bug", "erro do sistema", "calculo errado", "contagem errada",
-        "divergencia", "incoerente", "nao aceito", "nao procede",
-        "nao e verdade", "dados errados", "informacao errada",
-        "isso nao existe", "voce esta errado", "nao bate",
-        
-        # --- GRUPO C: Inação / Ainda não foi ---
-        "nao fui", "nao procurei", "ainda nao", "nao liguei",
-        "nao conversei", "nao tentei", "nao estive", "nao falei",
-        "nao fiz", "esqueci", "nao tive tempo", "nao deu tempo",
-        
-        # --- GRUPO D: Conflito Pessoal (Medo/Raiva da Escola) ---
-        "eles nao gostam de mim", "diretor nao gosta", "perseguicao",
-        "tenho problemas la", "sou perseguido", "briguei la",
-        "clima ruim", "mau atendimento", "nao me atendem bem"
+        "recuso", "errada", "equivocado", "falso", "absurdo",
+        "nao fui", "nao procurei", "ainda nao", "nao posso ir"
     ]
     
     # LÓGICA DE DECISÃO CORRIGIDA
