@@ -72,77 +72,109 @@ def _verificar_critica_severa(text, classification=None):
     return False
 
 def _identificar_proximo_passo(last_user_msg, history):
+    """
+    AJUSTADO: Separa quem JÁ FOI (Escalação) de quem NÃO QUER IR (Recusa).
+    """
     if not history: return None
+    
+    # 1. Recupera mensagem anterior do bot
     last_bot_msg = ""
     for msg in reversed(history):
         if msg.get("role") == "assistant":
-            last_bot_msg = _normalize_text(msg.get("content", ""))
+            raw_content = msg.get("content", "")
+            last_bot_msg = _normalize_text(raw_content).replace("*", "").replace("\n", " ")
             break
-    if not last_bot_msg: return None
+            
+    if not last_bot_msg: last_bot_msg = "" 
+
     user_txt = _normalize_text(last_user_msg)
     
-    termos_instrucao = ["trio gestor", "escola", "regional", "ure", "chamado", "diretor"]
-    bot_deu_instrucao = any(termo in last_bot_msg for termo in termos_instrucao)
+    # 2. Identificação de Contexto
+    ctx_escola = any(t in last_bot_msg for t in [
+        "trio gestor", "procurar a escola", "unidade escolar", 
+        "diretor", "vice-diretor", "coordenador", "gestao da escola"
+    ])
+    
+    ctx_regional = any(t in last_bot_msg for t in [
+        "contato com a ure", "unidade regional", "dirigente regional",
+        "supervisão de ensino", "diretoria de ensino"
+    ])
+    
+    ctx_chamado = any(t in last_bot_msg for t in [
+        "atendimento.educacao.sp.gov.br", "chamado oficial", "portal de atendimento"
+    ])
 
+    # 3. Triggers de Desistência
     triggers_desistencia = [
         "ninguem resolve", "nao vou em lugar nenhum", "nao vou procurar mais ninguem",
         "vou desistir", "cansei dessa merda", "ninguem ajuda", "tudo inutil",
-        "nao vou em escola nenhuma"
+        "nao vou em escola nenhuma", "deixa pra la", "esquece"
     ]
     if any(t in user_txt for t in triggers_desistencia):
-        return "CMD_CHAMADO"
+        return "CMD_ENCERRAMENTO_TOTAL" if ctx_chamado else "CMD_CHAMADO"
 
-    triggers_recusa = [
-        "ja fui", "ja falei", "ja fiz", "ja procurei", "nao resolveu", 
-        "nao adiantou", "nao adianta", "nao concordo", "esta errado", 
-        "discordo", "mentira", "incorreto", 
-        "nao vou", "nao irei", "nao quero", "me recuso", "sem chance", "jamais"
-    ]
-    
-    is_recusa = False
-    for t in triggers_recusa:
-        if t in user_txt:
-            if t == "nao": 
-                 if bot_deu_instrucao: is_recusa = True
-            else:
-                is_recusa = True
-            if is_recusa: break
-    
-    if is_recusa:
-        if "atendimento.educacao.sp.gov.br" in last_bot_msg or "chamado oficial" in last_bot_msg:
-            return "CMD_ENCERRAMENTO_TOTAL"
-        if "contato com a ure" in last_bot_msg or "unidade regional" in last_bot_msg:
-            return "CMD_CHAMADO"
-        if "voce vai procurar a escola" in last_bot_msg or "ja realizou esse contato" in last_bot_msg:
-            return "CMD_REGIONAL"
-        return "CMD_ESCOLA"
-
-    triggers_inercia = [
-        "ainda nao", "nao procurei", "nao fui", "ainda nao fui", 
-        "nao tive tempo", "vou ver", "vou ver isso"
-    ]
-    if any(t in user_txt for t in triggers_inercia):
-        if "contato com a ure" in last_bot_msg:
-            return "CMD_REGIONAL"
-        if "voce vai procurar a escola" in last_bot_msg:
-            return "CMD_ESCOLA"
+    # 4. SUPER LISTA DE ESCALAÇÃO (Aumentada e Validada)
+    triggers_escalacao = [
+        # Ação já realizada (Passado)
+        "ja fui", "ja falei", "ja fiz", "ja procurei", "ja liguei", 
+        "ja conversei", "ja estive", "ja realizei", "ja tentei",
+        "ja entrei em contato", "ja mandei", "ja enviei", "ja questionei",
+        "ja perguntei", "ja informei", "ja passei", "ja solicitei",
+        "ja reclamei", "ja reportei", "ja vi",
         
-    triggers_acao = [
+        # Ineficácia / Problema Persiste
+        "nao resolveu", "nao adiantou", "nao adianta", "nao solucionou",
+        "nao funcionou", "nao deu certo", "nao obtive", "nao mudou",
+        "sem sucesso", "sem exito", "sem resposta", "sem solucao",
+        "nada feito", "nada resolvido", "continua igual", "mesmo problema",
+        "nenhuma solucao", "em vao", "foi inutil", "perda de tempo",
+        "eles nao resolvem", "eles nao sabem", "ninguem sabe",
+        "nao foi resolvido", "eles nao irao mudar",
+        
+        # --- CORREÇÃO AQUI: Perguntas de Próximo Passo (Futuro) ---
+        "e agora", "e depois", "depois disso", "apos isso", 
+        "o que faco", "o que fazer", "fazer o que", "faco o que",
+        "qual o proximo", "qual o passo", "proxima etapa", "proximo passo",
+        "para onde vou", "aonde vou", "onde ir",
+        "quem procuro", "procuro quem", "quem resolve",
+        "mais alguem", "outra opcao", "outra alternativa",
+        "como proceder", "como faco", "como agir",
+        "entao o que", "se nao der certo", "e ai"
+    ]
+
+    # 5. LISTA DE RECUSA (Usuário NÃO QUER IR / NÃO FOI -> Insistência na Escola)
+    triggers_recusa = [
+        "nao concordo", "esta errado", "discordo", "mentira", "incorreto",
+        "nao vou", "nao irei", "nao quero", "me recuso", "sem chance", 
+        "jamais", "nunca", "de jeito nenhum", "nem pensar", 
+        "recuso", "errada", "equivocado", "falso", "absurdo",
+        "nao fui", "nao procurei", "ainda nao", "nao posso ir"
+    ]
+    
+    # LÓGICA DE DECISÃO CORRIGIDA
+    
+    # A. Prioridade: Se já fez, escala
+    if any(t in user_txt for t in triggers_escalacao):
+        if ctx_chamado: return "CMD_ENCERRAMENTO_TOTAL"
+        if ctx_regional: return "CMD_CHAMADO"
+        return "CMD_REGIONAL" # Padrão: Se já foi na escola, vai pra regional
+
+    # B. Se recusa ou não foi, insiste na escola (Obedecendo o fluxo)
+    if any(t in user_txt for t in triggers_recusa):
+        return "CMD_INSISTENCIA_ESCOLA"
+
+    # 6. Aceite / Encerramento Positivo
+    triggers_aceite = [
         "irei procurar", "vou procurar", "vou la", "vou ir", 
         "farei isso", "fazerei isso", "vou fazer", 
-        "vou entrar em contato", "vou ligar", "vou na escola"
-    ]
-    if any(t in user_txt for t in triggers_acao):
-        return "CMD_FINALIZACAO"
-
-    triggers_simples = [
+        "vou entrar em contato", "vou ligar", "vou na escola",
         "ok", "ta bom", "tá bom", "beleza", "combinado", "entendi",
         "pode deixar", "obrigado", "valeu", "certo", "show", "perfeito", 
         "sim", "uhum", "pode ser", "com certeza"
     ]
-    if any(t in user_txt for t in triggers_simples):
-        if bot_deu_instrucao:
-            return "CMD_FINALIZACAO"
+    
+    if any(t in user_txt for t in triggers_aceite):
+        return "CMD_FINALIZACAO"
 
     return None
 
@@ -169,14 +201,11 @@ def _resgatar_intencao_tecnica(text):
     """
     norm = _normalize_text(text)
     
-    # 1. Avaliação (QAE/Farol - Prioridade Máxima por ser muito específico)
-    # Não alteramos nada aqui, continua verificando primeiro.
+    # 1. Avaliação
     if "qae" in norm or "farol" in norm or "indiciadores" in norm or "devolutiva" in norm:
         return "avaliacao"
 
-    # 2. Classificação / Pontuação (MUDANÇA: Subiu de prioridade)
-    # Agora verificamos isso ANTES de Alocação. Adicionamos "títulos", "diploma", etc.
-    # Assim, "pontuação da atribuição" cai aqui, e não em Alocação.
+    # 2. Classificação / Pontuação
     termos_classificacao = [
         "vunesp", "pontuacao", "pontos", "classificacao", "remanescente", 
         "diploma", "certificado", "mestrado", "doutorado", "titulos"
@@ -184,8 +213,7 @@ def _resgatar_intencao_tecnica(text):
     if any(t in norm for t in termos_classificacao):
         return "classificacao"
     
-    # 3. Alocação / PEI / Legislação (Ficou por último)
-    # Se não for pontuação nem avaliação, mas tiver termos de atribuição, cai aqui.
+    # 3. Alocação / PEI
     termos_alocacao = [
         "pei", "programa ensino integral", "atribuicao", "alocacao", 
         "jornada", "resolucao", "portaria", "designacao", "artigo 22"
@@ -227,8 +255,7 @@ def route_request(last_message: str, body: dict, client_ip: str):
             else:
                 decision = classifier.classify_intent(last_message)
                 
-                # --- AQUI ENTRA A CORREÇÃO: REDE DE SEGURANÇA ---
-                # Se o LLM disse que é Fora de Escopo, mas tem palavra técnica óbvia, nós corrigimos.
+                # Rede de Segurança
                 if decision["modulo"] == "fora_escopo":
                     resgate = _resgatar_intencao_tecnica(last_message)
                     if resgate:
@@ -237,13 +264,12 @@ def route_request(last_message: str, body: dict, client_ip: str):
                         decision["sub_intencao"] = "resgate_keyword"
                         decision_cmd = "CMD_TECNICA"
                     else:
-                        # Se não resgatou, mantém a lógica original
                         if _verificar_critica_severa(last_message, classification=decision):
                             decision_cmd = "CMD_CRITICA_GRAVE"
                         else:
                             decision_cmd = "CMD_FORA_ESCOPO"
                 else:
-                    # Se já veio classificado como técnico, segue o baile
+                    # Classificação Técnica Padrão
                     mod = decision["modulo"]
                     sub = decision.get("sub_intencao")
                     if mod in ["avaliacao", "classificacao", "alocacao"]:
@@ -303,15 +329,23 @@ def route_request(last_message: str, body: dict, client_ip: str):
             "**Trio Gestor da sua Unidade Escolar** (Diretor, Vice-Diretor ou Coordenador). Eles têm acesso aos seus dados no sistema e podem verificar particularidades.\n\n"
             "Você vai procurar a escola ou já realizou esse contato?"
         )
+    
+    # NOVO BLOCO: TRATAMENTO DE RECUSA / INSISTÊNCIA
+    elif decision_cmd == "CMD_INSISTENCIA_ESCOLA":
+        response_text = (
+            "Compreendo, mas o **Trio Gestor da escola** é a primeira instância obrigatória "
+            "para validação de dados e correção de apontamentos no sistema.\n\n"
+            "Sem essa conferência inicial na unidade, a Diretoria de Ensino não consegue prosseguir. "
+            "Por favor, tente esse contato inicial para garantir que sua solicitação siga o trâmite correto."
+        )
 
     elif decision_cmd == "CMD_REGIONAL":
         response_text = (
-            "Entendo que você já conversou com o Trio Gestor da sua escola.\n\n"
-            "Nesse caso, o próximo passo da escalação é procurar a **Unidade Regional de Ensino (URE)** responsável pela sua unidade. "
+            "Compreendo que o contato com a escola não resolveu a situação.\n\n"
+            "Nesse caso, a escalação correta é procurar a **Unidade Regional de Ensino (URE)** responsável pela sua unidade. "
             "A equipe da URE possui acesso a níveis superiores do sistema e pode analisar situações que a escola não conseguiu resolver.\n\n"
             "Você vai entrar em contato com a URE ou já fez isso?"
         )
-
     elif decision_cmd == "CMD_CHAMADO":
         response_text = (
             "Compreendo. Como você já esgotou as instâncias de atendimento presencial (Escola e Regional), a orientação é formalizar sua solicitação via sistema.\n\n"
@@ -338,14 +372,15 @@ def route_request(last_message: str, body: dict, client_ip: str):
             response_text = "Fico feliz em ter ajudado! Se precisar de mais alguma informação, estou à disposição."
 
     else:
-        # Fallback genérico
+        # Fallback genérico - AQUI ESTÁ O FIX DO LOOP
         sub = decision.get("sub_intencao")
         emo = decision.get("emocao")
         
         if sub == "reclamacao_geral" or emo in ["frustracao", "raiva", "insatisfeito"]:
+            # EM VEZ DE MANDAR PARA A ESCOLA CEGAMENTE, FAZ O CHECK
             response_text = (
-               "Sinto muito pela sua insatisfação. Meu objetivo é apoiar com regras técnicas. "
-               "Se houver uma discordância de valores ou dados, recomendo iniciar o contato pelo **Trio Gestor da sua escola**."
+               "Sinto muito pela sua insatisfação. Meu objetivo é apoiar com as regras técnicas.\n\n"
+               "Para eu te orientar corretamente sobre como resolver esse problema: **você já conversou formalmente com o Trio Gestor da sua escola sobre isso?**"
             )
         elif sub == "duvida_aluno":
              msgs_aluno = [
