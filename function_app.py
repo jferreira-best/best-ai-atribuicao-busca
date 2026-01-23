@@ -1,9 +1,15 @@
+import sys
+import os
 import azure.functions as func
 import logging
 import json
 
-app = func.FunctionApp()
+# --- CONFIGURACAO DE CAMINHO ---
+root_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(root_path)
+# -------------------------------
 
+app = func.FunctionApp()
 
 @app.function_name(name="search_atribuicao")
 @app.route(
@@ -12,26 +18,21 @@ app = func.FunctionApp()
     methods=["POST"],
 )
 def http_search_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("Recebendo requisição no Orquestrador V2 (Fast Track).")
+    logging.info("Recebendo requisicao.")
 
     try:
-        # IMPORTA O ROUTER AQUI DENTRO
+        # Tenta importar
         from src.orchestrator import router
 
+        # Se importar com sucesso, segue o fluxo normal...
         body = req.get_json()
-
         query = body.get("query")
+        
         if not query:
-            return func.HttpResponse(
-                "JSON inválido: 'query' é obrigatório",
-                status_code=400,
-            )
+            return func.HttpResponse("JSON invalido: 'query' obrigatorio", status_code=400)
 
-        client_ip = req.headers.get("x-forwarded-for")
-        if not client_ip:
-            client_ip = "127.0.0.1"
-        else:
-            client_ip = client_ip.split(",")[0].split(":")[0]
+        client_ip = req.headers.get("x-forwarded-for") or "127.0.0.1"
+        client_ip = client_ip.split(",")[0].split(":")[0]
 
         result = router.route_request(query, body, client_ip)
 
@@ -41,9 +42,26 @@ def http_search_trigger(req: func.HttpRequest) -> func.HttpResponse:
             status_code=200,
         )
 
-    except Exception as e:
-        logging.exception(f"Erro crítico: {e}")
+    except ImportError as ie:
+        # === O RAIO-X: LISTAR ARQUIVOS NO RETORNO DO ERRO ===
+        try:
+            lista_raiz = os.listdir(root_path)
+            debug_info = f"1. Pasta Raiz ({root_path}): {lista_raiz}\n"
+            
+            if 'src' in lista_raiz:
+                caminho_src = os.path.join(root_path, 'src')
+                lista_src = os.listdir(caminho_src)
+                debug_info += f"2. Dentro da pasta 'src': {lista_src}"
+            else:
+                debug_info += "2. ERRO: A pasta 'src' NAO existe na raiz!"
+                
+        except Exception as e_debug:
+            debug_info = f"Erro ao listar arquivos: {str(e_debug)}"
+        # ====================================================
+
         return func.HttpResponse(
-            f"Erro interno: {str(e)}",
+            f"ERRO DE IMPORTACAO:\n{str(ie)}\n\n--- DIAGNOSTICO DE ARQUIVOS ---\n{debug_info}",
             status_code=500,
         )
+    except Exception as e:
+        return func.HttpResponse(f"Erro critico: {str(e)}", status_code=500)

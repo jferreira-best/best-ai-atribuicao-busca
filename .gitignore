@@ -18,3 +18,8 @@ local.settings.json
 dist/
 build/
 deploy_temp_bot/
+deploy.zip
+deploy_prod_emergency.ps1
+local.settingsteste.json
+
+local.settingsteste.json
