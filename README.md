@@ -56,3 +56,4 @@ src/
 
 #rodar direto :func azure functionapp publish see-d-crm-ingestaobot --build remote
 #az login --use-device-code
+#Pra saber pq o deploy falhou =az webapp log deployment show -n see-d-crm-ingestaobot -g RG-SEE-D-FUNCTION
