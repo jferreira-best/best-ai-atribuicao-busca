@@ -1,5 +1,12 @@
 import sys
 import os
+# --- BOOTSTRAP DE BIBLIOTECAS (CRUCIAL) ---
+# Adiciona a pasta _libs/site-packages ao caminho do Python
+root_path = os.path.dirname(os.path.abspath(__file__))
+libs_path = os.path.join(root_path, '_libs', 'site-packages')
+sys.path.insert(0, libs_path) # Prioridade máxima
+sys.path.append(root_path)
+# ------------------------------------------
 import azure.functions as func
 import logging
 import json

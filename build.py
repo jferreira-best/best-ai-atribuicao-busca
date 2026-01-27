@@ -5,54 +5,54 @@ import subprocess
 import sys
 
 ZIP_NAME = "deploy.zip"
-
-# Pastas para ignorar (NÃO queremos enviar lixo do Windows)
+# Note que tirei .python_packages da ignore list e mudei o alvo
 IGNORE_DIRS = {'.git', '.vscode', '.venv', 'env', '__pycache__', '.idea', 'bin', 'lib', 'include', 'Scripts'}
 IGNORE_FILES = {ZIP_NAME, 'build.py', 'deploy_prod.ps1', 'deploy_dev_emergency.ps1'}
 
-def install_deps_locally():
-    """Baixa as bibliotecas para uma pasta local antes de zipar"""
-    print("⬇️  Baixando bibliotecas localmente...")
+# NOME DA PASTA DE LIBS (Sem ponto na frente para evitar ser ignorada)
+LIB_FOLDER = "_libs"
+
+def install_linux_deps():
+    print(f"⬇️  Baixando bibliotecas LINUX para pasta '{LIB_FOLDER}'...")
     
-    # Esta é a estrutura EXATA que o Azure exige para Python
-    target_dir = os.path.join(os.getcwd(), ".python_packages", "lib", "site-packages")
+    target_dir = os.path.join(os.getcwd(), LIB_FOLDER, "site-packages")
     
-    # Limpa instalação anterior
-    if os.path.exists(target_dir): shutil.rmtree(os.path.join(os.getcwd(), ".python_packages"))
+    if os.path.exists(os.path.join(os.getcwd(), LIB_FOLDER)): 
+        shutil.rmtree(os.path.join(os.getcwd(), LIB_FOLDER))
     os.makedirs(target_dir, exist_ok=True)
     
-    # Instala usando o pip do sistema
+    # Baixa binários Linux compatíveis
     subprocess.check_call([
         sys.executable, "-m", "pip", "install", 
         "-r", "requirements.txt", 
-        "-t", target_dir
+        "-t", target_dir,
+        "--platform", "manylinux2014_x86_64",
+        "--only-binary=:all:",
+        "--implementation", "cp",
+        "--python-version", "3.11",
+        "--abi", "cp311"
     ])
-    print("✅ Bibliotecas baixadas com sucesso!")
+    print("✅ Bibliotecas baixadas!")
 
 def create_zip():
-    # 1. Instala dependências
-    install_deps_locally()
-    
-    # 2. Cria o ZIP
-    print(f"📦 Criando {ZIP_NAME} com pacote completo...")
+    try:
+        install_linux_deps()
+    except Exception as e:
+        print(f"⚠️ Erro no download Linux: {e}")
+
+    print(f"📦 Criando {ZIP_NAME}...")
     if os.path.exists(ZIP_NAME): os.remove(ZIP_NAME)
 
-    count = 0
     with zipfile.ZipFile(ZIP_NAME, 'w', zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk('.'):
-            # Remove pastas ignoradas
             dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
-            
             for file in files:
                 if file in IGNORE_FILES or file.endswith(('.log', '.pyc')): continue
-                
                 full_path = os.path.join(root, file)
-                # Corrige barras para Linux
                 arcname = os.path.relpath(full_path, '.').replace(os.sep, '/')
                 zf.write(full_path, arcname)
-                count += 1
-                
-    print(f"✅ ZIP PRONTO! ({count} arquivos inclusos)")
+    
+    print("✅ ZIP PRONTO!")
 
 if __name__ == "__main__":
     create_zip()
