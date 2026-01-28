@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from src.config import settings
 from src.shared.utils import clean_text, filename_from_source
 
-# Configuração de Log para garantir que você veja o DEBUG
+# Configuração de Log
 logging.getLogger().setLevel(logging.INFO)
 
 # --- Embeddings ---
@@ -26,8 +26,7 @@ def _get_embedding(text):
 def _vector_search(vector, top_k):
     if not vector: return []
     try:
-        # Forçamos um K alto aqui também
-        k_param = 50 
+        k_param = 50 # Busca ampla para garantir recall
     except:
         k_param = 50
     
@@ -71,17 +70,22 @@ def _text_search(query, top_k):
 def _expand_query(user_query: str) -> str:
     if not user_query: return user_query
     q = user_query.lower()
-    gatilhos = [
+    
+    # Gatilhos EXCLUSIVOS de Atribuição (Só aqui forçamos 2026)
+    gatilhos_at = [
         "contratado", "candidato", "contratação", "categoria o", 
-        "lc 1093", "1.093", "pss", 
-        "jornada", "carga", "projeto", "programa", "atribuição"
+        "jornada", "carga", "projeto", "programa", "atribuição", "adido"
     ]
-    if any(t in q for t in gatilhos):
-        # Aumentamos a "agressividade" da expansão
-        return f"{user_query} regras vigentes 2026 nova redação (N.R.) alterações recentes resolução 10"
+    
+    # Gatilhos de Avaliação (Não forçamos ano, pois as regras podem ser de 2025)
+    gatilhos_ad = ["farol", "avaliação", "desempenho", "indicador", "qae", "qse"]
+
+    if any(t in q for t in gatilhos_at) and not any(t in q for t in gatilhos_ad):
+        return f"{user_query} regras vigentes 2026 nova redação (N.R.) resolução 10"
+    
     return user_query
 
-# --- Helpers Matemáticos (DEBUGGABLE) ---
+# --- Helpers Matemáticos ---
 
 MESES_PT = {
     "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4, "maio": 5, "junho": 6,
@@ -89,17 +93,12 @@ MESES_PT = {
 }
 
 def _parse_date_robust(data_iso: str, filename: str):
-    """
-    Parser robusto que aceita ISO (Azure) e Nome de Arquivo (PT-BR).
-    """
     if data_iso:
         clean = str(data_iso).strip()
         if "T" in clean: clean = clean.split("T")[0]
         try:
-            dt = datetime.strptime(clean, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            return dt
-        except:
-            pass
+            return datetime.strptime(clean, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except: pass
 
     if filename:
         match = re.search(r"(\d{1,2})\s+de\s+([a-zA-Zç]+)\s+(?:de\s+)?(\d{4})", filename, re.IGNORECASE)
@@ -109,8 +108,7 @@ def _parse_date_robust(data_iso: str, filename: str):
             if mes_num:
                 try:
                     return datetime(int(ano), mes_num, int(dia), tzinfo=timezone.utc)
-                except:
-                    pass
+                except: pass
     return None
 
 def _recency_score(data_publicacao: str, source_file: str) -> float:
@@ -121,6 +119,7 @@ def _recency_score(data_publicacao: str, source_file: str) -> float:
     days_diff = max((now - d).days, 0)
     
     bonus = 0.0
+    # Mantemos a agressividade para Atribuição, mas o Context Match vai salvar a Avaliação
     if days_diff <= 7: bonus += 5.0
     elif days_diff <= 20: bonus += 3.0
     elif days_diff <= 45: bonus += 1.5
@@ -128,28 +127,46 @@ def _recency_score(data_publicacao: str, source_file: str) -> float:
     if d.year >= 2026: bonus += 0.5
     return bonus
 
+def _context_match_bonus(doc_title: str, source_file: str, user_query: str) -> float:
+    """
+    [NOVO] O Salva-Vidas:
+    Se a pergunta é de Avaliação, força arquivos 'AD -' para o topo, 
+    mesmo que sejam 'velhos' (2025).
+    """
+    txt_check = (doc_title or "") + " " + (source_file or "")
+    t = txt_check.lower()
+    q = user_query.lower()
+    
+    # 1. Contexto AVALIAÇÃO DE DESEMPENHO (AD)
+    # Se perguntar de farol, indicadores, avaliação...
+    termos_ad = ["farol", "avaliação", "avaliacao", "desempenho", "indicador", "meta", "ponto", "qae", "qse"]
+    
+    if any(kw in q for kw in termos_ad):
+        # Se o arquivo for do tipo AD (Avaliação) ou tiver Avaliação no nome
+        if "ad -" in t or "avaliação" in t or "avaliacao" in t or "portaria conjunta" in t:
+            return 15.0  # BÔNUS MASSIVO (Supera qualquer recência de 2026)
+
+    # 2. Contexto ATRIBUIÇÃO (AT) - Reforço
+    termos_at = ["atribuição", "atribuicao", "jornada", "carga", "constituição", "adido", "saldo"]
+    if any(kw in q for kw in termos_at):
+        if "at -" in t or "resolução" in t:
+            return 5.0
+
+    return 0.0
+
 def _content_type_bonus(text_snippet: str, data_publicacao: str, source_file: str) -> float:
     if not text_snippet: return 0.0
     
     d = _parse_date_robust(data_publicacao, source_file)
+    # Trava de segurança: "Nova Redação" só vale se for de 2026+
     if not d or d.year < 2026:
         return 0.0 
 
-    t = text_snippet.lower()
-    # Aumentei o range de busca para 3000 chars para garantir que pegue o (N.R.)
-    t_head = t[:3000] 
+    t = text_snippet.lower()[:3000]
+    gatilhos = ["passam a vigorar", "nova redação", "(n. r.)", "(n.r.)", "altera dispositivos"]
     
-    gatilhos_alteracao = [
-        "passam a vigorar com a seguinte redação", 
-        "nova redação", 
-        "(n. r.)", 
-        "(n.r.)",
-        "altera dispositivos",
-        "altera os dispositivos"
-    ]
-    
-    if any(g in t_head for g in gatilhos_alteracao):
-        return 10.0 # O Martelo
+    if any(g in t for g in gatilhos):
+        return 10.0 # O Martelo da Resolução 10
         
     return 0.0
 
@@ -164,16 +181,11 @@ def _authority_score(doc_title: str, norma_tipo: str) -> float:
 # --- Core RAG ---
 def retrieve_context(user_query: str, top_k: int = 10):
     expanded_query = _expand_query(user_query)
-    
-    # >>> ALTERAÇÃO CRÍTICA 1: Aumentamos Drasticamente o Recall Interno <<<
-    # Se pedimos top_k=5, trazemos 50 candidatos do Azure. 
-    # Isso garante que a Resolução 10 (que o Azure acha "fraca") entre na lista para ser salva pelo Python.
     internal_k = 50 
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         future_emb = executor.submit(_get_embedding, expanded_query)
         future_text = executor.submit(_text_search, expanded_query, internal_k)
-        
         vector = future_emb.result()
         text_hits = future_text.result()
         
@@ -185,50 +197,45 @@ def retrieve_context(user_query: str, top_k: int = 10):
     for h in vec_hits:
         if h['id'] not in all_hits: all_hits[h['id']] = h
 
-    logging.warning(f"--- RAIO-X DO RANKEAMENTO (Candidatos: {len(all_hits)}) ---")
+    logging.warning(f"--- RAIO-X HIBRIDO (Query: {user_query}) ---")
     
-    # Lista temporária para calcular scores e logar
     scored_candidates = []
     
     for h in all_hits.values():
         src = filename_from_source(h.get('source_file'))
+        doc_title = h.get('doc_title') or src
         
-        # Scores Individuais
+        # Scores
         base = (h.get('@search.rerankerScore') or h.get('@search.score') or 0)
         recency = _recency_score(h.get("data_publicacao"), h.get("source_file"))
-        auth = _authority_score(h.get("doc_title"), h.get("norma_tipo"))
+        auth = _authority_score(doc_title, h.get("norma_tipo"))
         content = _content_type_bonus(h.get("content") or h.get("text"), h.get("data_publicacao"), h.get("source_file"))
         
-        final_score = base + recency + auth + content
+        # O NOVO BÔNUS DE CONTEXTO (Muda o jogo para Avaliação)
+        context_match = _context_match_bonus(doc_title, h.get("source_file"), user_query)
         
-        h['_final_score'] = final_score # Salva para ordenação
+        final_score = base + recency + auth + content + context_match
+        
+        h['_final_score'] = final_score
         
         scored_candidates.append({
-            "doc": src[:40], # Nome curto para caber no log
+            "doc": src[:30], 
             "base": round(base, 2),
             "rec": recency,
-            "auth": auth,
-            "cont": content,
+            "ctx": context_match, # Verifique esta coluna no log!
             "FINAL": round(final_score, 2)
         })
 
-    # >>> ALTERAÇÃO CRÍTICA 2: Logs Visuais para Debug <<<
-    # Ordena para o log ficar bonito
+    # Logs Visuais
     scored_candidates.sort(key=lambda x: x['FINAL'], reverse=True)
-    
     print("\n" + "="*80)
-    print(f"{'DOCUMENTO':<40} | {'BASE':<6} | {'DATA':<5} | {'TIPO':<5} | {'CONT':<5} | {'TOTAL'}")
+    print(f"{'DOCUMENTO':<30} | {'BASE':<6} | {'REC':<5} | {'CTX':<5} | {'TOTAL'}")
     print("-" * 80)
-    for c in scored_candidates[:15]: # Mostra top 15 no log
-        print(f"{c['doc']:<40} | {c['base']:<6} | {c['rec']:<5} | {c['auth']:<5} | {c['cont']:<5} | {c['FINAL']}")
+    for c in scored_candidates[:12]:
+        print(f"{c['doc']:<30} | {c['base']:<6} | {c['rec']:<5} | {c['ctx']:<5} | {c['FINAL']}")
     print("="*80 + "\n")
 
-    # Ordenação Real para retorno
-    sorted_hits = sorted(
-        all_hits.values(), 
-        key=lambda x: x['_final_score'],
-        reverse=True
-    )
+    sorted_hits = sorted(all_hits.values(), key=lambda x: x['_final_score'], reverse=True)
 
     context_docs = []
     for h in sorted_hits[:top_k]:
@@ -243,7 +250,7 @@ def retrieve_context(user_query: str, top_k: int = 10):
             f"Documento: {doc_title}\n"
             f"Arquivo: {src_file}\n"
             f"Data: {dt_str}\n"
-            f"Score Relevância: {h['_final_score']:.2f}\n\n"
+            f"Score: {h['_final_score']:.2f}\n\n"
             f"CONTEÚDO:\n{clean_text(h.get('content') or h.get('text') or '')}\n"
             f"--- FIM DOC ---\n"
         )
