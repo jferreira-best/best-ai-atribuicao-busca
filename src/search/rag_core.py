@@ -1,12 +1,16 @@
 import requests
 import logging
+import re
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from src.config import settings
 from src.shared.utils import clean_text, filename_from_source
 
+# Configuração de Log para garantir que você veja o DEBUG
+logging.getLogger().setLevel(logging.INFO)
+
 # --- Embeddings ---
 def _get_embedding(text):
-    """Gera embedding usando Azure OpenAI"""
     if not text: return None
     try:
         url = f"{settings.AOAI_ENDPOINT}/openai/deployments/{settings.AOAI_EMB_DEPLOYMENT}/embeddings?api-version={settings.AOAI_API_VERSION}"
@@ -19,29 +23,22 @@ def _get_embedding(text):
         return None
 
 # --- Buscas ---
-# --- Buscas ---
 def _vector_search(vector, top_k):
     if not vector: return []
-    
     try:
-        k_param = int(top_k) 
+        # Forçamos um K alto aqui também
+        k_param = 50 
     except:
-        k_param = 5
+        k_param = 50
     
     url = f"{settings.SEARCH_ENDPOINT}/indexes/{settings.SEARCH_INDEX}/docs/search?api-version={settings.SEARCH_API_VERSION}"
-    
     payload = {
         "vectorQueries": [{
-            "kind": "vector", 
-            "vector": vector, 
-            "k": k_param,
-            "fields": "content_vector"
+            "kind": "vector", "vector": vector, "k": k_param, "fields": "content_vector"
         }],
         "top": k_param,
-        # CORREÇÃO ABAIXO: Removido 'content', mantido apenas 'text'
         "select": "id, doc_title, text, source_file, norma_tipo, data_publicacao, assunto" 
     }
-    
     try:
         r = requests.post(url, headers={"api-key": settings.SEARCH_KEY, "Content-Type": "application/json"}, json=payload)
         r.raise_for_status()
@@ -55,7 +52,6 @@ def _text_search(query, top_k):
     payload = {
         "search": query,
         "top": top_k,
-        # CORREÇÃO: Apenas campos que existem no índice (SEM 'content')
         "select": "id, doc_title, text, source_file, norma_tipo, data_publicacao, assunto",
         "queryType": "semantic",
         "semanticConfiguration": settings.SEARCH_SEMANTIC_CONFIG,
@@ -71,85 +67,191 @@ def _text_search(query, top_k):
         logging.error(f"Erro text_search: {e}")
         return []
 
+# --- Lógica de Negócio ---
+def _expand_query(user_query: str) -> str:
+    if not user_query: return user_query
+    q = user_query.lower()
+    gatilhos = [
+        "contratado", "candidato", "contratação", "categoria o", 
+        "lc 1093", "1.093", "pss", 
+        "jornada", "carga", "projeto", "programa", "atribuição"
+    ]
+    if any(t in q for t in gatilhos):
+        # Aumentamos a "agressividade" da expansão
+        return f"{user_query} regras vigentes 2026 nova redação (N.R.) alterações recentes resolução 10"
+    return user_query
+
+# --- Helpers Matemáticos (DEBUGGABLE) ---
+
+MESES_PT = {
+    "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4, "maio": 5, "junho": 6,
+    "julho": 7, "agosto": 8, "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12
+}
+
+def _parse_date_robust(data_iso: str, filename: str):
+    """
+    Parser robusto que aceita ISO (Azure) e Nome de Arquivo (PT-BR).
+    """
+    if data_iso:
+        clean = str(data_iso).strip()
+        if "T" in clean: clean = clean.split("T")[0]
+        try:
+            dt = datetime.strptime(clean, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            return dt
+        except:
+            pass
+
+    if filename:
+        match = re.search(r"(\d{1,2})\s+de\s+([a-zA-Zç]+)\s+(?:de\s+)?(\d{4})", filename, re.IGNORECASE)
+        if match:
+            dia, mes_nome, ano = match.groups()
+            mes_num = MESES_PT.get(mes_nome.lower())
+            if mes_num:
+                try:
+                    return datetime(int(ano), mes_num, int(dia), tzinfo=timezone.utc)
+                except:
+                    pass
+    return None
+
+def _recency_score(data_publicacao: str, source_file: str) -> float:
+    d = _parse_date_robust(data_publicacao, source_file)
+    if not d: return 0.0
+
+    now = datetime.now(timezone.utc)
+    days_diff = max((now - d).days, 0)
+    
+    bonus = 0.0
+    if days_diff <= 7: bonus += 5.0
+    elif days_diff <= 20: bonus += 3.0
+    elif days_diff <= 45: bonus += 1.5
+    
+    if d.year >= 2026: bonus += 0.5
+    return bonus
+
+def _content_type_bonus(text_snippet: str, data_publicacao: str, source_file: str) -> float:
+    if not text_snippet: return 0.0
+    
+    d = _parse_date_robust(data_publicacao, source_file)
+    if not d or d.year < 2026:
+        return 0.0 
+
+    t = text_snippet.lower()
+    # Aumentei o range de busca para 3000 chars para garantir que pegue o (N.R.)
+    t_head = t[:3000] 
+    
+    gatilhos_alteracao = [
+        "passam a vigorar com a seguinte redação", 
+        "nova redação", 
+        "(n. r.)", 
+        "(n.r.)",
+        "altera dispositivos",
+        "altera os dispositivos"
+    ]
+    
+    if any(g in t_head for g in gatilhos_alteracao):
+        return 10.0 # O Martelo
+        
+    return 0.0
+
+def _authority_score(doc_title: str, norma_tipo: str) -> float:
+    t = (doc_title or "").lower()
+    nt = (norma_tipo or "").lower()
+    score = 0.0
+    if "resolu" in t or "resolu" in nt: score += 0.5
+    elif "portaria" in t or "portaria" in nt: score += 0.3
+    return score
+
 # --- Core RAG ---
 def retrieve_context(user_query: str, top_k: int = 10):
-    """
-    Executa busca Híbrida (Vetorial + Semântica) e retorna contexto enriquecido
-    com metadados de data para decisão inteligente do LLM.
-    """
+    expanded_query = _expand_query(user_query)
     
-    # 1. Paraleliza Embedding e Busca Texto
+    # >>> ALTERAÇÃO CRÍTICA 1: Aumentamos Drasticamente o Recall Interno <<<
+    # Se pedimos top_k=5, trazemos 50 candidatos do Azure. 
+    # Isso garante que a Resolução 10 (que o Azure acha "fraca") entre na lista para ser salva pelo Python.
+    internal_k = 50 
+
     with ThreadPoolExecutor(max_workers=3) as executor:
-        future_emb = executor.submit(_get_embedding, user_query)
-        future_text = executor.submit(_text_search, user_query, top_k)
+        future_emb = executor.submit(_get_embedding, expanded_query)
+        future_text = executor.submit(_text_search, expanded_query, internal_k)
         
         vector = future_emb.result()
         text_hits = future_text.result()
         
-        # Só roda busca vetorial se embedding funcionou
         vec_hits = []
-        if vector:
-            vec_hits = _vector_search(vector, top_k)
+        if vector: vec_hits = _vector_search(vector, internal_k)
 
-    # 2. Diagnóstico Rápido (Log)
-    logging.info(f"Hits Texto: {len(text_hits)} | Hits Vetor: {len(vec_hits)}")
-    if text_hits:
-        first = text_hits[0]
-        rerank_score = first.get('@search.rerankerScore', 'N/A')
-        logging.info(f"Top Hit Score (Reranker): {rerank_score}")
-
-    # 3. Deduplicação (Merge Híbrido)
     all_hits = {}
-    
-    # Prioridade para Semantic Ranker (Hits de Texto)
-    for h in text_hits:
-        all_hits[h['id']] = h
-        
-    # Completa com Vetorial (se ID for inédito)
+    for h in text_hits: all_hits[h['id']] = h
     for h in vec_hits:
-        if h['id'] not in all_hits:
-            all_hits[h['id']] = h
+        if h['id'] not in all_hits: all_hits[h['id']] = h
 
-    # 4. Montagem do Contexto Rico
-    context_docs = []
+    logging.warning(f"--- RAIO-X DO RANKEAMENTO (Candidatos: {len(all_hits)}) ---")
     
-    # Ordena novamente pelo Reranker Score (se disponível) ou Score padrão
+    # Lista temporária para calcular scores e logar
+    scored_candidates = []
+    
+    for h in all_hits.values():
+        src = filename_from_source(h.get('source_file'))
+        
+        # Scores Individuais
+        base = (h.get('@search.rerankerScore') or h.get('@search.score') or 0)
+        recency = _recency_score(h.get("data_publicacao"), h.get("source_file"))
+        auth = _authority_score(h.get("doc_title"), h.get("norma_tipo"))
+        content = _content_type_bonus(h.get("content") or h.get("text"), h.get("data_publicacao"), h.get("source_file"))
+        
+        final_score = base + recency + auth + content
+        
+        h['_final_score'] = final_score # Salva para ordenação
+        
+        scored_candidates.append({
+            "doc": src[:40], # Nome curto para caber no log
+            "base": round(base, 2),
+            "rec": recency,
+            "auth": auth,
+            "cont": content,
+            "FINAL": round(final_score, 2)
+        })
+
+    # >>> ALTERAÇÃO CRÍTICA 2: Logs Visuais para Debug <<<
+    # Ordena para o log ficar bonito
+    scored_candidates.sort(key=lambda x: x['FINAL'], reverse=True)
+    
+    print("\n" + "="*80)
+    print(f"{'DOCUMENTO':<40} | {'BASE':<6} | {'DATA':<5} | {'TIPO':<5} | {'CONT':<5} | {'TOTAL'}")
+    print("-" * 80)
+    for c in scored_candidates[:15]: # Mostra top 15 no log
+        print(f"{c['doc']:<40} | {c['base']:<6} | {c['rec']:<5} | {c['auth']:<5} | {c['cont']:<5} | {c['FINAL']}")
+    print("="*80 + "\n")
+
+    # Ordenação Real para retorno
     sorted_hits = sorted(
         all_hits.values(), 
-        key=lambda x: x.get('@search.rerankerScore') or x.get('@search.score') or 0, 
+        key=lambda x: x['_final_score'],
         reverse=True
     )
 
-    for h in sorted_hits[:top_k]: # Garante top_k final após merge
-        
-        # Metadados Essenciais para Hierarquia de Normas
+    context_docs = []
+    for h in sorted_hits[:top_k]:
         src_file = filename_from_source(h.get('source_file'))
         doc_title = h.get('doc_title') or src_file
-        data_pub = h.get('data_publicacao', 'Data Desconhecida')
-        tipo = h.get('norma_tipo', 'Norma')
-        assunto = h.get('assunto', 'Geral')
+        data_raw = h.get('data_publicacao')
+        d_obj = _parse_date_robust(data_raw, src_file)
+        dt_str = d_obj.strftime("%d/%m/%Y") if d_obj else (data_raw or "Data Desconhecida")
         
-        # Limpeza do texto
-        raw_content = h.get('content') or h.get('text') or ""
-        clean_content = clean_text(raw_content)
-        
-        # Bloco formatado para o LLM entender a hierarquia
-        # Isso permite que o prompt diga: "Priorize a data mais recente"
-        meta_block = (
+        formatted_entry = (
+            f"--- DOC ---\n"
             f"Documento: {doc_title}\n"
-            f"Arquivo Original: {src_file}\n"
-            f"Data Publicação: {data_pub}\n"
-            f"Tipo Normativo: {tipo}\n"
-            f"Assunto: {assunto}"
+            f"Arquivo: {src_file}\n"
+            f"Data: {dt_str}\n"
+            f"Score Relevância: {h['_final_score']:.2f}\n\n"
+            f"CONTEÚDO:\n{clean_text(h.get('content') or h.get('text') or '')}\n"
+            f"--- FIM DOC ---\n"
         )
-        
-        # Formata o chunk final
-        formatted_entry = f"--- INÍCIO DO DOCUMENTO ---\n{meta_block}\n\nCONTEÚDO:\n{clean_content}\n--- FIM DO DOCUMENTO ---\n"
         
         context_docs.append({
             "content": formatted_entry,
-            "meta": src_file,  # Usado apenas para citação final ao usuário
-            "score": h.get('@search.rerankerScore')
+            "meta": src_file,
+            "score": h['_final_score']
         })
 
     return context_docs

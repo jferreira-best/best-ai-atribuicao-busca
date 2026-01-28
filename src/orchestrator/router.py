@@ -210,19 +210,30 @@ def _identificar_proximo_passo(last_user_msg, history):
     return None
 
 def _verificar_contexto_continuacao(last_user_msg, history):
-    if not history: return None
+    if not history: 
+        return None
+
     last_bot_msg = ""
     for msg in reversed(history):
         if msg.get("role") == "assistant":
             last_bot_msg = _normalize_text(msg.get("content", ""))
             break
-    if not last_bot_msg: return None
 
+    if not last_bot_msg:
+        return None
+
+    # Só entra aqui se o último contexto realmente era sobre "efetivo x contratado"
     if "efetivo" in last_bot_msg and "contratado" in last_bot_msg:
         user_txt = _normalize_text(last_user_msg)
-        keywords = ["efetivo", "titular", "contratado", "categoria o", "cat o", "temporario"]
-        if any(k in user_txt for k in keywords):
+
+        termos_alocacao = ["atribuicao", "aulas", "jornada", "sessao", "sed", "ure", "saldo", "alocacao", "designacao"]
+        termos_classificacao = ["pontuacao", "pontos", "classificacao", "vunesp", "titulos", "certificado", "mestrado", "doutorado", "especializacao"]
+
+        if any(t in user_txt for t in termos_alocacao):
+            return "alocacao"
+        if any(t in user_txt for t in termos_classificacao):
             return "classificacao"
+
     return None
 
 def _resgatar_intencao_tecnica(text):
@@ -286,6 +297,13 @@ def route_request(last_message: str, body: dict, client_ip: str):
             else:
                 decision = classifier.classify_intent(last_message)
                 
+
+                # OVERRIDE LEVE: se a pergunta tiver termos fortes de alocação, não deixa cair em classificacao
+                norm = _normalize_text(last_message)
+                if any(t in norm for t in ["atribuicao", "aulas", "sessao", "jornada", "sed", "ure", "saldo"]):
+                    decision["modulo"] = "alocacao"
+                    decision["sub_intencao"] = decision.get("sub_intencao") or "processo"
+                    
                 # Rede de Segurança
                 if decision["modulo"] == "fora_escopo":
                     resgate = _resgatar_intencao_tecnica(last_message)

@@ -69,3 +69,6 @@ Saída: {"modulo": "classificacao", "sub_intencao": "processo", "emocao": "preoc
 
 Entrada: "voces sao uns inuteis nada funciona"
 Saída: {"modulo": "fora_escopo", "sub_intencao": "reclamacao_geral", "emocao": "raiva", "confianca": 0.99}
+
+Entrada: "Como o docente contratado ou candidato à contratação recebe a atribuição de aulas segundo a nova redação?"
+Saída: {"modulo": "alocacao", "sub_intencao": "processo", "emocao": "duvida", "confianca": 0.99}

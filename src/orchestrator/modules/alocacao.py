@@ -151,7 +151,7 @@ def run_chain(query: str, context_data: dict):
 
     # 5. Fluxo Normal (RAG Técnico - PEI/Regular)
     else:
-        docs = rag_core.retrieve_context(query, top_k=6)
+        docs = rag_core.retrieve_context(query, top_k=12)
 
     # =========================================================================
 
